@@ -10,6 +10,7 @@ interface NodeViewProps {
 
 export default function NodeView({ nodeId }: NodeViewProps) {
   const [showInbox, setShowInbox] = useState(false)
+  const [showOutbox, setShowOutbox] = useState(false)
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null)
   
   const node = useSimulatorStore(state => state.nodes[nodeId])
@@ -123,8 +124,14 @@ export default function NodeView({ nodeId }: NodeViewProps) {
           </div>
           <div className="text-gray-400">{node.inbox.length} messages</div>
         </div>
-        <div className="bg-gray-700 p-2 rounded">
-          <div className="font-bold mb-1">Outbox</div>
+        <div 
+          className={`bg-gray-700 p-2 rounded cursor-pointer hover:bg-gray-600 transition-colors ${showOutbox ? 'ring-2 ring-blue-500' : ''}`}
+          onClick={() => setShowOutbox(!showOutbox)}
+        >
+          <div className="font-bold mb-1 flex justify-between items-center">
+            Outbox
+            <span className={`transform transition-transform ${showOutbox ? 'rotate-180' : ''}`}>▼</span>
+          </div>
           <div className="text-gray-400">{node.outbox.length} messages</div>
         </div>
       </div>
@@ -150,6 +157,47 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                         {msg.type}
                       </span>
                       <span className="text-gray-300">from {msg.from}</span>
+                    </div>
+                    <span className="text-gray-400 text-[10px]">
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  
+                  {expandedMessageId === msg.id && (
+                    <div className="mt-2 pt-2 border-t border-gray-600">
+                      <div className="font-semibold text-gray-400 mb-1">
+                        Payload:
+                      </div>
+                      <pre className="text-[10px] bg-gray-900 p-2 rounded overflow-x-auto text-green-400 font-mono">
+                        {JSON.stringify(msg, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Expanded Outbox View */}
+        {showOutbox && node.outbox.length > 0 && (
+          <div className="bg-gray-800 border border-gray-600 rounded p-2">
+            <div className="space-y-2">
+              {node.outbox.map((msg) => (
+                <div key={msg.id} className="bg-gray-700 rounded p-2 text-xs">
+                  <div 
+                    className="flex justify-between items-center cursor-pointer"
+                    onClick={() => toggleMessage(msg.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`px-1.5 py-0.5 rounded uppercase text-[10px] font-bold ${
+                        msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
+                        msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
+                        'bg-green-900 text-green-200'
+                      }`}>
+                        {msg.type}
+                      </span>
+                      <span className="text-gray-300">to {msg.to}</span>
                     </div>
                     <span className="text-gray-400 text-[10px]">
                       {new Date(msg.timestamp).toLocaleTimeString()}
