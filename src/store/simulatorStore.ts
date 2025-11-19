@@ -73,9 +73,12 @@ const createInitialTickets = (nodeId: NodeId, baseTime: number): { tickets: Tick
   return { tickets, lastHLC: baseHLC }
 }
 
-const createInitialNodeState = (nodeId: NodeId): NodeState => {
-  const now = Date.now()
-  const { tickets, lastHLC } = createInitialTickets(nodeId, now)
+const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?: number): NodeState => {
+  const now = initialTime ?? Date.now()
+  // Use dataTime if provided, otherwise use now. 
+  // For synchronized start, dataTime should be the same across nodes.
+  const ticketTime = dataTime ?? now
+  const { tickets, lastHLC } = createInitialTickets(nodeId, ticketTime)
   
   return {
     nodeId,
@@ -91,11 +94,13 @@ const createInitialNodeState = (nodeId: NodeId): NodeState => {
   }
 }
 
-export const useSimulatorStore = create<SimulatorState>((set, get) => ({
+export const useSimulatorStore = create<SimulatorState>((set, get) => {
+  const now = Date.now()
+  return {
   nodes: {
-    'client-a': createInitialNodeState('client-a'),
-    'client-b': createInitialNodeState('client-b'),
-    'server': createInitialNodeState('server')
+    'client-a': createInitialNodeState('client-a', now + 1, now),
+    'client-b': createInitialNodeState('client-b', now + 1, now),
+    'server': createInitialNodeState('server', now, now)
   },
 
   inFlightMessages: [],
@@ -397,11 +402,12 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   },
 
   resetSimulator: () => {
+    const now = Date.now()
     set({
       nodes: {
-        'client-a': createInitialNodeState('client-a'),
-        'client-b': createInitialNodeState('client-b'),
-        'server': createInitialNodeState('server')
+        'client-a': createInitialNodeState('client-a', now + 1, now),
+        'client-b': createInitialNodeState('client-b', now + 1, now),
+        'server': createInitialNodeState('server', now, now)
       },
       inFlightMessages: [],
       logs: []
@@ -421,4 +427,4 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       }
     }))
   }
-}))
+}})
