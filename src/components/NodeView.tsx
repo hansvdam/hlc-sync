@@ -152,6 +152,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                       <span className={`px-1.5 py-0.5 rounded uppercase text-[10px] font-bold ${
                         msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
                         msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
+                        msg.type === 'update' ? 'bg-orange-900 text-orange-200' :
                         'bg-green-900 text-green-200'
                       }`}>
                         {msg.type}
@@ -193,6 +194,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                       <span className={`px-1.5 py-0.5 rounded uppercase text-[10px] font-bold ${
                         msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
                         msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
+                        msg.type === 'update' ? 'bg-orange-900 text-orange-200' :
                         'bg-green-900 text-green-200'
                       }`}>
                         {msg.type}
@@ -232,71 +234,14 @@ export default function NodeView({ nodeId }: NodeViewProps) {
 
         {/* Sync buttons */}
         <div className="space-y-2 flex-shrink-0">
-          {nodeId !== 'server' ? (
-            <>
-              <button
-                onClick={() => {
-                  // Create ticket deltas for modified fields only
-                  const ticketDeltas = node.modifiedTicketIds.map(ticketId => {
-                    const ticket = node.tickets.find(t => t.id === ticketId)
-                    if (!ticket) return null
-                    
-                    // Get modified fields for this ticket
-                    const modifiedFieldNames = node.modifiedFields[ticketId] || []
-                    
-                    // Create partial fields object
-                    const deltaFields: Record<string, any> = {}
-                    modifiedFieldNames.forEach(fieldName => {
-                      const field = ticket.fields[fieldName as keyof typeof ticket.fields]
-                      if (field) {
-                        deltaFields[fieldName] = field
-                      }
-                    })
-                    
-                    return {
-                      id: ticketId,
-                      fields: deltaFields
-                    }
-                  }).filter(Boolean)
-                  
-                  const message = {
-                    id: uuidv4(),
-                    from: nodeId,
-                    to: 'server' as NodeId,
-                    type: 'push' as const,
-                    tickets: ticketDeltas,
-                    timestamp: Date.now()
-                  }
-                  useSimulatorStore.getState().sendMessage(message)
-                  clearModifiedTickets(nodeId)
-                }}
-                disabled={!node.isAppOnline || node.modifiedTicketIds.length === 0}
-                className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm flex justify-between items-center"
-              >
-                <span>Send</span>
-                {node.modifiedTicketIds.length > 0 && (
-                  <span className="bg-blue-800 px-1.5 rounded text-xs">
-                    {node.modifiedTicketIds.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
-                disabled={node.inbox.length === 0}
-                className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
-              >
-                Process Inbox ({node.inbox.length})
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
-              disabled={node.inbox.length === 0}
-              className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
-            >
-              Process Inbox ({node.inbox.length})
-            </button>
-          )}
+          {/* Only show Process Inbox button for both client and server */}
+          <button
+            onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
+            disabled={node.inbox.length === 0}
+            className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
+          >
+            Process Inbox ({node.inbox.length})
+          </button>
         </div>
 
         {/* Ticket tree */}

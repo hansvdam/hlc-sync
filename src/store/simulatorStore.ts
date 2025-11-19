@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, TicketDelta, HLCTimestamp } from '../types'
+import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, TicketDelta, HLCTimestamp, FieldUpdateMessage } from '../types'
 import { createHLCField, createHLC, getMaxHLCFromTickets } from '../utils/hlc'
-import { mergeTickets } from '../utils/merge'
+import { mergeTickets, mergeFieldUpdate } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
 
 interface InFlightMessage extends SyncMessage {
@@ -215,6 +215,37 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     }))
 
     get().addLog(nodeId, 'Ticket Created', `Created ${newTicketId}`)
+
+    // Send update messages for each field
+    Object.entries(newTicket.fields).forEach(([fieldName, field]) => {
+      const updateMessage: FieldUpdateMessage = {
+        id: uuidv4(),
+        from: nodeId,
+        to: 'server', // Placeholder
+        type: 'update',
+        entity_id: newTicketId,
+        field: fieldName,
+        value: field.value,
+        timestamp: Date.now(),
+        hlc: field.hlc
+      }
+
+      if (nodeId === 'server') {
+        // Broadcast to all clients
+        ['client-a', 'client-b'].forEach(clientId => {
+          get().sendMessage({
+            ...updateMessage,
+            to: clientId as NodeId
+          })
+        })
+      } else {
+        // Send to server
+        get().sendMessage({
+          ...updateMessage,
+          to: 'server'
+        })
+      }
+    })
   },
 
   editTicketField: (nodeId, ticketId, fieldName, value) => {
@@ -261,6 +292,35 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     }))
 
     get().addLog(nodeId, 'Field Edited', `${ticketId}.${fieldName} = "${value}"`)
+
+    // Send update message
+    const updateMessage: FieldUpdateMessage = {
+      id: uuidv4(),
+      from: nodeId,
+      to: 'server', // Placeholder, will be overwritten in loop below
+      type: 'update',
+      entity_id: ticketId,
+      field: fieldName,
+      value: value,
+      timestamp: Date.now(),
+      hlc: newField.hlc
+    }
+
+    if (nodeId === 'server') {
+      // Broadcast to all clients
+      ['client-a', 'client-b'].forEach(clientId => {
+        get().sendMessage({
+          ...updateMessage,
+          to: clientId as NodeId
+        })
+      })
+    } else {
+      // Send to server
+      get().sendMessage({
+        ...updateMessage,
+        to: 'server'
+      })
+    }
   },
 
   sendMessage: (message) => {
@@ -325,20 +385,59 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     // Process each message in inbox
     node.inbox.forEach(message => {
       // Update HLC based on incoming message
-      // Find max HLC in incoming message
-      const maxRemoteHLC = getMaxHLCFromTickets(message.tickets)
+      let maxRemoteHLC: HLCTimestamp | undefined
+      
+      if (message.type === 'update') {
+        maxRemoteHLC = message.hlc
+      } else {
+        // Batch message
+        maxRemoteHLC = getMaxHLCFromTickets(message.tickets)
+      }
       
       // Update local HLC: max(local, remote, physical)
       // We treat this as a "receive" event in HLC
       currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
 
-      // Since we are now working with partial tickets (deltas), we need to cast or ensure mergeTickets handles them
-      // In mergeTickets, we iterate over remote fields anyway.
-      const { merged, conflicts } = mergeTickets(currentTickets, message.tickets as Ticket[])
+      let conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+      let merged: Ticket[] = currentTickets
+
+      if (message.type === 'update') {
+        // Single field update
+        const result = mergeFieldUpdate(currentTickets, message)
+        merged = result.merged
+        conflicts = result.conflicts
+        
+        get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} from ${message.from}`)
+
+        // If server, broadcast to other clients
+        if (nodeId === 'server') {
+          ['client-a', 'client-b'].forEach(clientId => {
+            // Don't send back to sender
+            if (clientId !== message.from) {
+              const client = get().nodes[clientId as NodeId]
+              if (client.isOnline && client.isAppOnline) {
+                get().sendMessage({
+                  ...message,
+                  id: uuidv4(),
+                  from: 'server',
+                  to: clientId as NodeId,
+                  // Keep the original HLC and value
+                })
+              }
+            }
+          })
+        }
+
+      } else {
+        // Batch update
+        const result = mergeTickets(currentTickets, message.tickets as Ticket[])
+        merged = result.merged
+        conflicts = result.conflicts
+        get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`)
+      }
+
       currentTickets = merged
       allConflicts = [...allConflicts, ...conflicts]
-
-      get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`)
     })
 
     // Log conflicts
@@ -362,37 +461,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         }
       }
     }))
-
-    // If this is the server, broadcast to all clients
-    if (nodeId === 'server') {
-      const clients: NodeId[] = ['client-a', 'client-b']
-      clients.forEach(clientId => {
-        const client = get().nodes[clientId]
-        if (client.isOnline && client.isAppOnline) {
-          // For broadcast, we usually send the full state of changed tickets or everything
-          // But here we are broadcasting the *result* of the merge.
-          // The simulator logic was sending "currentTickets" which is EVERYTHING.
-          // The user wants "A message from a client should actually only be a modification to a single field"
-          // But that applies to PUSH (client -> server). 
-          // Broadcast (server -> client) might still be full state or deltas.
-          // Let's keep broadcast as full state for now unless requested otherwise, 
-          // OR better yet, broadcast only what changed. But simpler to keep as is for server.
-          // Wait, the type `SyncMessage` now expects `TicketDelta[]`.
-          // So we should convert `currentTickets` to `TicketDelta[]` which is compatible (Ticket extends TicketDelta effectively)
-          
-          const broadcastMessage = {
-            id: uuidv4(),
-            from: 'server' as NodeId,
-            to: clientId,
-            type: 'broadcast' as const,
-            tickets: currentTickets, // This sends full tickets, which is valid TicketDelta
-            timestamp: Date.now()
-          }
-          get().sendMessage(broadcastMessage)
-        }
-      })
-    }
-
+    
     get().addLog(nodeId, 'Inbox Cleared', `Processed ${node.inbox.length} messages`)
   },
 

@@ -120,7 +120,10 @@ export default function MessageCanvas() {
                   fontSize="10"
                   fill="white"
                 >
-                  {message.tickets.length} ticket{message.tickets.length !== 1 ? 's' : ''}
+                  {message.type === 'update' 
+                    ? '1 update' 
+                    : `${message.tickets.length} ticket${message.tickets.length !== 1 ? 's' : ''}`
+                  }
                 </text>
               </g>
             )}
