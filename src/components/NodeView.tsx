@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import type { NodeId, SyncMessage } from '../types'
+import type { NodeId } from '../types'
 import { useSimulatorStore } from '../store/simulatorStore'
 import TicketTree from './TicketTree'
-import { v4 as uuidv4 } from 'uuid'
 
 interface NodeViewProps {
   nodeId: NodeId
@@ -18,7 +17,6 @@ export default function NodeView({ nodeId }: NodeViewProps) {
   const toggleDeviceOnline = useSimulatorStore(state => state.toggleDeviceOnline)
   const toggleAppOnline = useSimulatorStore(state => state.toggleAppOnline)
   const createTicket = useSimulatorStore(state => state.createTicket)
-  const clearModifiedTickets = useSimulatorStore(state => state.clearModifiedTickets)
   const hasInFlightMessages = useSimulatorStore(state =>
     state.inFlightMessages.some(m => m.from === nodeId || m.to === nodeId)
   )
@@ -95,7 +93,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       </div>
 
       {/* Status indicators */}
-      <div className="mb-4 flex gap-2 flex-shrink-0">
+      <div className="mb-4 flex gap-2 flex-shrink-0 flex-wrap">
         {nodeId !== 'server' && (
           <>
             <span className={`text-xs px-2 py-1 rounded ${
@@ -109,6 +107,17 @@ export default function NodeView({ nodeId }: NodeViewProps) {
               {node.isAppOnline ? 'Running' : 'Stopped'}
             </span>
           </>
+        )}
+        
+        {/* Revision Display */}
+        {nodeId === 'server' ? (
+          <span className="text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-200 border border-indigo-700">
+            Rev: {node.serverRevision}
+          </span>
+        ) : (
+          <span className="text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-200 border border-indigo-700">
+            Server Rev: {node.lastSeenServerRevision}
+          </span>
         )}
       </div>
 

@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, TicketDelta, HLCTimestamp, FieldUpdateMessage } from '../types'
+import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, HLCTimestamp, FieldUpdateMessage } from '../types'
 import { createHLCField, createHLC, getMaxHLCFromTickets } from '../utils/hlc'
 import { mergeTickets, mergeFieldUpdate } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
 
-interface InFlightMessage extends SyncMessage {
+type InFlightMessage = SyncMessage & {
   progress: number // 0 to 1 for animation
 }
 
@@ -99,7 +99,10 @@ const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?:
     outbox: [],
     modifiedTicketIds: [],
     modifiedFields: {},
-    lastHLC
+    lastHLC,
+    serverRevision: nodeId === 'server' ? 0 : undefined,
+    eventBuffer: nodeId === 'server' ? [] : undefined,
+    lastSeenServerRevision: nodeId !== 'server' ? 0 : undefined
   }
 }
 
@@ -158,6 +161,33 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           ]
         }))
         get().addLog(nodeId, 'Outbox Flushed', `Sent ${messagesToSend.length} messages`)
+      }
+
+      // Fetch missing messages from server
+      if (nodeId !== 'server') {
+        const server = get().nodes['server']
+        const client = get().nodes[nodeId]
+        const lastSeen = client.lastSeenServerRevision || 0
+        
+        const missingMessages = server.eventBuffer?.filter(msg => (msg.revision || 0) > lastSeen) || []
+        
+        if (missingMessages.length > 0) {
+          const fetchMessages = missingMessages.map(msg => ({
+            ...msg,
+            id: uuidv4(),
+            to: nodeId,
+            progress: 0
+          }))
+          
+          set(state => ({
+            inFlightMessages: [
+              ...state.inFlightMessages,
+              ...fetchMessages
+            ]
+          }))
+          
+          get().addLog(nodeId, 'Fetching Events', `Requesting ${missingMessages.length} missed events`)
+        }
       }
     }
   },
@@ -231,13 +261,34 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       }
 
       if (nodeId === 'server') {
-        // Broadcast to all clients
-        ['client-a', 'client-b'].forEach(clientId => {
-          get().sendMessage({
-            ...updateMessage,
-            to: clientId as NodeId
+        // Server Logic: Increment revision, add to buffer
+        const serverState = get().nodes['server']
+        const newRevision = (serverState.serverRevision || 0) + 1
+        
+        set(state => ({
+          nodes: {
+            ...state.nodes,
+            server: {
+              ...state.nodes.server,
+              serverRevision: newRevision,
+              eventBuffer: [
+                ...(state.nodes.server.eventBuffer || []),
+                { ...updateMessage, revision: newRevision }
+              ]
+            }
+          }
+        }))
+
+        // Broadcast to all clients if server is online
+        if (serverState.isOnline) {
+          ['client-a', 'client-b'].forEach(clientId => {
+            get().sendMessage({
+              ...updateMessage,
+              revision: newRevision,
+              to: clientId as NodeId
+            })
           })
-        })
+        }
       } else {
         // Send to server
         get().sendMessage({
@@ -307,13 +358,34 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     }
 
     if (nodeId === 'server') {
-      // Broadcast to all clients
-      ['client-a', 'client-b'].forEach(clientId => {
-        get().sendMessage({
-          ...updateMessage,
-          to: clientId as NodeId
+      // Server Logic: Increment revision, add to buffer
+      const serverState = get().nodes['server']
+      const newRevision = (serverState.serverRevision || 0) + 1
+      
+      set(state => ({
+        nodes: {
+          ...state.nodes,
+          server: {
+            ...state.nodes.server,
+            serverRevision: newRevision,
+            eventBuffer: [
+              ...(state.nodes.server.eventBuffer || []),
+              { ...updateMessage, revision: newRevision }
+            ]
+          }
+        }
+      }))
+
+      // Broadcast to all clients if server is online
+      if (serverState.isOnline) {
+        ['client-a', 'client-b'].forEach(clientId => {
+          get().sendMessage({
+            ...updateMessage,
+            revision: newRevision,
+            to: clientId as NodeId
+          })
         })
-      })
+      }
     } else {
       // Send to server
       get().sendMessage({
@@ -327,6 +399,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     const node = get().nodes[message.from]
     
     if (!node.isOnline) {
+      if (message.from === 'server') {
+        get().addLog(message.from, 'Broadcasting Paused', 'Server is offline')
+        return
+      }
       // Queue in outbox
       set(state => ({
         nodes: {
@@ -359,6 +435,16 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     const message = get().inFlightMessages.find(m => m.id === messageId)
     if (!message) return
 
+    // Drop message if recipient is offline
+    const recipient = get().nodes[message.to]
+    if (!recipient.isOnline) {
+      set(state => ({
+        inFlightMessages: state.inFlightMessages.filter(m => m.id !== messageId)
+      }))
+      get().addLog(message.to, 'Message Dropped', `Recipient offline: ${message.type} from ${message.from}`)
+      return
+    }
+
     // Add to recipient's inbox
     set(state => ({
       nodes: {
@@ -381,9 +467,18 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     let currentTickets = node.tickets
     let allConflicts: Array<{ ticketId: string, field: string, winner: string }> = []
     let currentHLC = node.lastHLC
+    
+    let currentServerRevision = node.serverRevision || 0
+    let newEventBuffer = node.eventBuffer || []
+    let lastSeenServerRevision = node.lastSeenServerRevision || 0
 
     // Process each message in inbox
     node.inbox.forEach(message => {
+      // Track revision for clients
+      if (nodeId !== 'server' && message.revision) {
+        lastSeenServerRevision = Math.max(lastSeenServerRevision, message.revision)
+      }
+
       // Update HLC based on incoming message
       let maxRemoteHLC: HLCTimestamp | undefined
       
@@ -411,19 +506,19 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
         // If server, broadcast to other clients
         if (nodeId === 'server') {
+          currentServerRevision++
+          const messageWithRevision = { ...message, revision: currentServerRevision }
+          newEventBuffer = [...newEventBuffer, messageWithRevision];
+
           ['client-a', 'client-b'].forEach(clientId => {
             // Don't send back to sender
             if (clientId !== message.from) {
-              const client = get().nodes[clientId as NodeId]
-              if (client.isOnline && client.isAppOnline) {
-                get().sendMessage({
-                  ...message,
-                  id: uuidv4(),
-                  from: 'server',
-                  to: clientId as NodeId,
-                  // Keep the original HLC and value
-                })
-              }
+              get().sendMessage({
+                ...messageWithRevision,
+                id: uuidv4(),
+                from: 'server',
+                to: clientId as NodeId,
+              })
             }
           })
         }
@@ -457,7 +552,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           ...state.nodes[nodeId],
           tickets: currentTickets,
           inbox: [], // Clear inbox
-          lastHLC: currentHLC
+          lastHLC: currentHLC,
+          serverRevision: nodeId === 'server' ? currentServerRevision : undefined,
+          eventBuffer: nodeId === 'server' ? newEventBuffer : undefined,
+          lastSeenServerRevision: nodeId !== 'server' ? lastSeenServerRevision : undefined
         }
       }
     }))
