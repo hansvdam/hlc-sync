@@ -1,4 +1,5 @@
-import type { NodeId } from '../types'
+import { useState } from 'react'
+import type { NodeId, SyncMessage } from '../types'
 import { useSimulatorStore } from '../store/simulatorStore'
 import TicketTree from './TicketTree'
 import { v4 as uuidv4 } from 'uuid'
@@ -8,6 +9,9 @@ interface NodeViewProps {
 }
 
 export default function NodeView({ nodeId }: NodeViewProps) {
+  const [showInbox, setShowInbox] = useState(false)
+  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null)
+  
   const node = useSimulatorStore(state => state.nodes[nodeId])
   const updateNodeTime = useSimulatorStore(state => state.updateNodeTime)
   const toggleDeviceOnline = useSimulatorStore(state => state.toggleDeviceOnline)
@@ -21,10 +25,14 @@ export default function NodeView({ nodeId }: NodeViewProps) {
     updateNodeTime(nodeId, parseInt(e.target.value))
   }
 
+  const toggleMessage = (messageId: string) => {
+    setExpandedMessageId(expandedMessageId === messageId ? null : messageId)
+  }
+
   return (
-    <div className="bg-gray-800 rounded-lg p-4 flex flex-col border border-gray-700">
+    <div className="bg-gray-800 rounded-lg p-4 flex flex-col border border-gray-700 h-full">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-4 flex-shrink-0">
         <h2 className="text-xl font-bold mb-2 capitalize flex items-center gap-2">
           {nodeId === 'server' ? 'Server' : nodeId.replace('-', ' ')}
           {hasInFlightMessages && (
@@ -85,7 +93,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       </div>
 
       {/* Status indicators */}
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex gap-2 flex-shrink-0">
         {nodeId !== 'server' && (
           <>
             <span className={`text-xs px-2 py-1 rounded ${
@@ -103,9 +111,15 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       </div>
 
       {/* Inbox/Outbox */}
-      <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-gray-700 p-2 rounded">
-          <div className="font-bold mb-1">Inbox</div>
+      <div className="mb-4 grid grid-cols-2 gap-2 text-xs flex-shrink-0">
+        <div 
+          className={`bg-gray-700 p-2 rounded cursor-pointer hover:bg-gray-600 transition-colors ${showInbox ? 'ring-2 ring-blue-500' : ''}`}
+          onClick={() => setShowInbox(!showInbox)}
+        >
+          <div className="font-bold mb-1 flex justify-between items-center">
+            Inbox
+            <span className={`transform transition-transform ${showInbox ? 'rotate-180' : ''}`}>▼</span>
+          </div>
           <div className="text-gray-400">{node.inbox.length} messages</div>
         </div>
         <div className="bg-gray-700 p-2 rounded">
@@ -114,8 +128,53 @@ export default function NodeView({ nodeId }: NodeViewProps) {
         </div>
       </div>
 
+      {/* Expanded Inbox View */}
+      {showInbox && node.inbox.length > 0 && (
+        <div className="mb-4 bg-gray-750 border border-gray-600 rounded p-2 max-h-60 overflow-y-auto">
+          <div className="space-y-2">
+            {node.inbox.map((msg) => (
+              <div key={msg.id} className="bg-gray-700 rounded p-2 text-xs">
+                <div 
+                  className="flex justify-between items-center cursor-pointer"
+                  onClick={() => toggleMessage(msg.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`px-1.5 py-0.5 rounded uppercase text-[10px] font-bold ${
+                      msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
+                      msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
+                      'bg-green-900 text-green-200'
+                    }`}>
+                      {msg.type}
+                    </span>
+                    <span className="text-gray-300">from {msg.from}</span>
+                  </div>
+                  <span className="text-gray-400 text-[10px]">
+                    {new Date(msg.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                
+                {expandedMessageId === msg.id && (
+                  <div className="mt-2 pt-2 border-t border-gray-600">
+                    <div className="font-semibold text-gray-400 mb-1">
+                      {msg.tickets.length} Ticket{msg.tickets.length !== 1 ? 's' : ''}
+                    </div>
+                    <ul className="space-y-1 pl-2">
+                      {msg.tickets.map(t => (
+                        <li key={t.id} className="text-gray-300">
+                          {t.fields.ticket_name.value} <span className="text-gray-500">({t.id})</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Create Ticket button */}
-      <div className="mb-4">
+      <div className="mb-4 flex-shrink-0">
         <button
           onClick={() => createTicket(nodeId)}
           className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium"
@@ -125,7 +184,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       </div>
 
       {/* Sync buttons */}
-      <div className="mb-4 space-y-2">
+      <div className="mb-4 space-y-2 flex-shrink-0">
         {nodeId !== 'server' ? (
           <>
             <button
@@ -165,7 +224,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       </div>
 
       {/* Ticket tree */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto min-h-0 border-t border-gray-700 pt-4">
         <TicketTree nodeId={nodeId} />
       </div>
     </div>

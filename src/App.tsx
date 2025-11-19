@@ -4,6 +4,7 @@ import LogPanel from './components/LogPanel'
 import MessageCanvas from './components/MessageCanvas'
 import HelpOverlay from './components/HelpOverlay'
 
+
 function App() {
   const resetSimulator = useSimulatorStore(state => state.resetSimulator)
   const messageDelay = useSimulatorStore(state => state.messageDelay)
