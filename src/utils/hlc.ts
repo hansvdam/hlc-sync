@@ -1,4 +1,4 @@
-import type { HLCTimestamp, HLCField } from '../types'
+import type { HLCTimestamp, HLCField, TicketDelta } from '../types'
 
 /**
  * Create a new HLC timestamp
@@ -88,4 +88,23 @@ export function createHLCField<T>(
     value,
     hlc: createHLC(physicalTime, nodeId, lastHLC)
   }
+}
+
+/**
+ * Get the maximum HLC timestamp from a set of tickets
+ */
+export function getMaxHLCFromTickets(tickets: TicketDelta[]): HLCTimestamp | undefined {
+  let maxHLC: HLCTimestamp | undefined
+
+  tickets.forEach(ticket => {
+    Object.values(ticket.fields).forEach(field => {
+      if (field && field.hlc) {
+        if (!maxHLC || compareHLC(field.hlc, maxHLC) > 0) {
+          maxHLC = field.hlc
+        }
+      }
+    })
+  })
+
+  return maxHLC
 }

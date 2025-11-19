@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, TicketDelta } from '../types'
-import { createHLCField } from '../utils/hlc'
+import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, TicketDelta, HLCTimestamp } from '../types'
+import { createHLCField, createHLC, getMaxHLCFromTickets } from '../utils/hlc'
 import { mergeTickets } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -37,44 +37,59 @@ interface SimulatorState {
 }
 
 // Initial dummy tickets
-const createInitialTickets = (nodeId: NodeId): Ticket[] => {
-  const baseTime = Date.now()
-  return [
+const createInitialTickets = (nodeId: NodeId, baseTime: number): { tickets: Ticket[], lastHLC: HLCTimestamp } => {
+  const baseHLC: HLCTimestamp = { timestamp: baseTime, counter: 0, nodeId }
+  
+  const createField = (val: string) => {
+     // Use the base HLC for all initial fields so they don't increment the counter
+     // We do NOT update baseHLC here.
+     return createHLCField(val, baseTime, nodeId, baseHLC)
+  }
+
+  const tickets = [
     {
       id: 'ticket-1',
       fields: {
-        ticket_name: createHLCField('Ticket 1', baseTime, nodeId),
-        dummy_field: createHLCField('Dummy value 1', baseTime, nodeId)
+        ticket_name: createField('Ticket 1'),
+        dummy_field: createField('Dummy value 1')
       }
     },
     {
       id: 'ticket-2',
       fields: {
-        ticket_name: createHLCField('Ticket 2', baseTime, nodeId),
-        dummy_field: createHLCField('Dummy value 2', baseTime, nodeId)
+        ticket_name: createField('Ticket 2'),
+        dummy_field: createField('Dummy value 2')
       }
     },
     {
       id: 'ticket-3',
       fields: {
-        ticket_name: createHLCField('Ticket 3', baseTime, nodeId),
-        dummy_field: createHLCField('Dummy value 3', baseTime, nodeId)
+        ticket_name: createField('Ticket 3'),
+        dummy_field: createField('Dummy value 3')
       }
     }
   ]
+  
+  return { tickets, lastHLC: baseHLC }
 }
 
-const createInitialNodeState = (nodeId: NodeId): NodeState => ({
-  nodeId,
-  currentTime: Date.now(),
-  isOnline: true,
-  isAppOnline: true,
-  tickets: createInitialTickets(nodeId),
-  inbox: [],
-  outbox: [],
-  modifiedTicketIds: [],
-  modifiedFields: {}
-})
+const createInitialNodeState = (nodeId: NodeId): NodeState => {
+  const now = Date.now()
+  const { tickets, lastHLC } = createInitialTickets(nodeId, now)
+  
+  return {
+    nodeId,
+    currentTime: now,
+    isOnline: true,
+    isAppOnline: true,
+    tickets,
+    inbox: [],
+    outbox: [],
+    modifiedTicketIds: [],
+    modifiedFields: {},
+    lastHLC
+  }
+}
 
 export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   nodes: {
@@ -129,12 +144,20 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     const node = get().nodes[nodeId]
     const ticketCount = node.tickets.length + 1
     const newTicketId = `ticket-${Date.now()}`
+    
+    let currentHLC = node.lastHLC
+    
+    const createField = (val: string) => {
+      const field = createHLCField(val, node.currentTime, nodeId, currentHLC)
+      currentHLC = field.hlc
+      return field
+    }
 
     const newTicket: Ticket = {
       id: newTicketId,
       fields: {
-        ticket_name: createHLCField(`New Ticket ${ticketCount}`, node.currentTime, nodeId),
-        dummy_field: createHLCField('New dummy value', node.currentTime, nodeId)
+        ticket_name: createField(`New Ticket ${ticketCount}`),
+        dummy_field: createField('New dummy value')
       }
     }
 
@@ -149,7 +172,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
           modifiedFields: {
             ...state.nodes[nodeId].modifiedFields,
             [newTicketId]: Object.keys(newTicket.fields)
-          }
+          },
+          lastHLC: currentHLC
         }
       }
     }))
@@ -162,8 +186,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     const ticket = node.tickets.find(t => t.id === ticketId)
     if (!ticket) return
 
-    // Get last HLC from any field in the ticket
-    const lastHLC = ticket.fields.ticket_name.hlc
+    // Use node.lastHLC instead of ticket field's HLC
+    const lastHLC = node.lastHLC
 
     // Create new field value with HLC
     const newField = createHLCField(value, node.currentTime, nodeId, lastHLC)
@@ -194,7 +218,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
             [ticketId]: currentModifiedFields.includes(fieldName) 
               ? currentModifiedFields 
               : [...currentModifiedFields, fieldName]
-          }
+          },
+          lastHLC: newField.hlc
         }
       }
     }))
@@ -243,9 +268,18 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
 
     let currentTickets = node.tickets
     let allConflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+    let currentHLC = node.lastHLC
 
     // Process each message in inbox
     node.inbox.forEach(message => {
+      // Update HLC based on incoming message
+      // Find max HLC in incoming message
+      const maxRemoteHLC = getMaxHLCFromTickets(message.tickets)
+      
+      // Update local HLC: max(local, remote, physical)
+      // We treat this as a "receive" event in HLC
+      currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
+
       // Since we are now working with partial tickets (deltas), we need to cast or ensure mergeTickets handles them
       // In mergeTickets, we iterate over remote fields anyway.
       const { merged, conflicts } = mergeTickets(currentTickets, message.tickets as Ticket[])
@@ -271,7 +305,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         [nodeId]: {
           ...state.nodes[nodeId],
           tickets: currentTickets,
-          inbox: [] // Clear inbox
+          inbox: [], // Clear inbox
+          lastHLC: currentHLC
         }
       }
     }))
