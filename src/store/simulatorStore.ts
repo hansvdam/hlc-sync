@@ -281,6 +281,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
         // Broadcast to all clients if server is online
         if (serverState.isOnline) {
+          // Send to all clients, including sender (to confirm revision)
           ['client-a', 'client-b'].forEach(clientId => {
             get().sendMessage({
               ...updateMessage,
@@ -378,6 +379,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
       // Broadcast to all clients if server is online
       if (serverState.isOnline) {
+        // Send to all clients, including sender (to confirm revision)
         ['client-a', 'client-b'].forEach(clientId => {
           get().sendMessage({
             ...updateMessage,
@@ -511,15 +513,13 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           newEventBuffer = [...newEventBuffer, messageWithRevision];
 
           ['client-a', 'client-b'].forEach(clientId => {
-            // Don't send back to sender
-            if (clientId !== message.from) {
-              get().sendMessage({
-                ...messageWithRevision,
-                id: uuidv4(),
-                from: 'server',
-                to: clientId as NodeId,
-              })
-            }
+            // Send to all clients, including sender (to confirm revision)
+            get().sendMessage({
+              ...messageWithRevision,
+              id: uuidv4(),
+              from: 'server',
+              to: clientId as NodeId,
+            })
           })
         }
 
