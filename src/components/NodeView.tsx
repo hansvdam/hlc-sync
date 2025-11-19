@@ -129,107 +129,118 @@ export default function NodeView({ nodeId }: NodeViewProps) {
         </div>
       </div>
 
-      {/* Expanded Inbox View */}
-      {showInbox && node.inbox.length > 0 && (
-        <div className="mb-4 bg-gray-750 border border-gray-600 rounded p-2 max-h-60 overflow-y-auto">
-          <div className="space-y-2">
-            {node.inbox.map((msg) => (
-              <div key={msg.id} className="bg-gray-700 rounded p-2 text-xs">
-                <div 
-                  className="flex justify-between items-center cursor-pointer"
-                  onClick={() => toggleMessage(msg.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`px-1.5 py-0.5 rounded uppercase text-[10px] font-bold ${
-                      msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
-                      msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
-                      'bg-green-900 text-green-200'
-                    }`}>
-                      {msg.type}
-                    </span>
-                    <span className="text-gray-300">from {msg.from}</span>
-                  </div>
-                  <span className="text-gray-400 text-[10px]">
-                    {new Date(msg.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                
-                {expandedMessageId === msg.id && (
-                  <div className="mt-2 pt-2 border-t border-gray-600">
-                    <div className="font-semibold text-gray-400 mb-1">
-                      Payload:
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-auto min-h-0 border-t border-gray-700 pt-4 space-y-4">
+        {/* Expanded Inbox View */}
+        {showInbox && node.inbox.length > 0 && (
+          <div className="bg-gray-800 border border-gray-600 rounded p-2">
+            <div className="space-y-2">
+              {node.inbox.map((msg) => (
+                <div key={msg.id} className="bg-gray-700 rounded p-2 text-xs">
+                  <div 
+                    className="flex justify-between items-center cursor-pointer"
+                    onClick={() => toggleMessage(msg.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`px-1.5 py-0.5 rounded uppercase text-[10px] font-bold ${
+                        msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
+                        msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
+                        'bg-green-900 text-green-200'
+                      }`}>
+                        {msg.type}
+                      </span>
+                      <span className="text-gray-300">from {msg.from}</span>
                     </div>
-                    <pre className="text-[10px] bg-gray-900 p-2 rounded overflow-auto max-h-40 text-green-400 font-mono">
-                      {JSON.stringify(msg, null, 2)}
-                    </pre>
+                    <span className="text-gray-400 text-[10px]">
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  
+                  {expandedMessageId === msg.id && (
+                    <div className="mt-2 pt-2 border-t border-gray-600">
+                      <div className="font-semibold text-gray-400 mb-1">
+                        Payload:
+                      </div>
+                      <pre className="text-[10px] bg-gray-900 p-2 rounded overflow-x-auto text-green-400 font-mono">
+                        {JSON.stringify(msg, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* Create Ticket button */}
+        <div className="flex-shrink-0">
+          <button
+            onClick={() => createTicket(nodeId)}
+            className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium"
+          >
+            + Create Ticket
+          </button>
         </div>
-      )}
 
-      {/* Create Ticket button */}
-      <div className="mb-4 flex-shrink-0">
-        <button
-          onClick={() => createTicket(nodeId)}
-          className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium"
-        >
-          + Create Ticket
-        </button>
-      </div>
-
-      {/* Sync buttons */}
-      <div className="mb-4 space-y-2 flex-shrink-0">
-        {nodeId !== 'server' ? (
-          <>
-            <button
-              onClick={() => {
-                // Create ticket deltas for modified fields only
-                const ticketDeltas = node.modifiedTicketIds.map(ticketId => {
-                  const ticket = node.tickets.find(t => t.id === ticketId)
-                  if (!ticket) return null
-                  
-                  // Get modified fields for this ticket
-                  const modifiedFieldNames = node.modifiedFields[ticketId] || []
-                  
-                  // Create partial fields object
-                  const deltaFields: Record<string, any> = {}
-                  modifiedFieldNames.forEach(fieldName => {
-                    const field = ticket.fields[fieldName as keyof typeof ticket.fields]
-                    if (field) {
-                      deltaFields[fieldName] = field
+        {/* Sync buttons */}
+        <div className="space-y-2 flex-shrink-0">
+          {nodeId !== 'server' ? (
+            <>
+              <button
+                onClick={() => {
+                  // Create ticket deltas for modified fields only
+                  const ticketDeltas = node.modifiedTicketIds.map(ticketId => {
+                    const ticket = node.tickets.find(t => t.id === ticketId)
+                    if (!ticket) return null
+                    
+                    // Get modified fields for this ticket
+                    const modifiedFieldNames = node.modifiedFields[ticketId] || []
+                    
+                    // Create partial fields object
+                    const deltaFields: Record<string, any> = {}
+                    modifiedFieldNames.forEach(fieldName => {
+                      const field = ticket.fields[fieldName as keyof typeof ticket.fields]
+                      if (field) {
+                        deltaFields[fieldName] = field
+                      }
+                    })
+                    
+                    return {
+                      id: ticketId,
+                      fields: deltaFields
                     }
-                  })
+                  }).filter(Boolean)
                   
-                  return {
-                    id: ticketId,
-                    fields: deltaFields
+                  const message = {
+                    id: uuidv4(),
+                    from: nodeId,
+                    to: 'server' as NodeId,
+                    type: 'push' as const,
+                    tickets: ticketDeltas,
+                    timestamp: Date.now()
                   }
-                }).filter(Boolean)
-                
-                const message = {
-                  id: uuidv4(),
-                  from: nodeId,
-                  to: 'server' as NodeId,
-                  type: 'push' as const,
-                  tickets: ticketDeltas,
-                  timestamp: Date.now()
-                }
-                useSimulatorStore.getState().sendMessage(message)
-                clearModifiedTickets(nodeId)
-              }}
-              disabled={!node.isOnline || !node.isAppOnline || node.modifiedTicketIds.length === 0}
-              className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm flex justify-between items-center"
-            >
-              <span>Push to Server</span>
-              {node.modifiedTicketIds.length > 0 && (
-                <span className="bg-blue-800 px-1.5 rounded text-xs">
-                  {node.modifiedTicketIds.length}
-                </span>
-              )}
-            </button>
+                  useSimulatorStore.getState().sendMessage(message)
+                  clearModifiedTickets(nodeId)
+                }}
+                disabled={!node.isOnline || !node.isAppOnline || node.modifiedTicketIds.length === 0}
+                className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm flex justify-between items-center"
+              >
+                <span>Push to Server</span>
+                {node.modifiedTicketIds.length > 0 && (
+                  <span className="bg-blue-800 px-1.5 rounded text-xs">
+                    {node.modifiedTicketIds.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
+                disabled={node.inbox.length === 0}
+                className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
+              >
+                Process Inbox ({node.inbox.length})
+              </button>
+            </>
+          ) : (
             <button
               onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
               disabled={node.inbox.length === 0}
@@ -237,21 +248,13 @@ export default function NodeView({ nodeId }: NodeViewProps) {
             >
               Process Inbox ({node.inbox.length})
             </button>
-          </>
-        ) : (
-          <button
-            onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
-            disabled={node.inbox.length === 0}
-            className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
-          >
-            Process Inbox ({node.inbox.length})
-          </button>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Ticket tree */}
-      <div className="flex-1 overflow-auto min-h-0 border-t border-gray-700 pt-4">
-        <TicketTree nodeId={nodeId} />
+        {/* Ticket tree */}
+        <div className="">
+          <TicketTree nodeId={nodeId} />
+        </div>
       </div>
     </div>
   )
