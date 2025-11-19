@@ -116,7 +116,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
   },
 
   inFlightMessages: [],
-  messageDelay: 2000, // 2 seconds default
+  messageDelay: 1000, // 1 second default
   logs: [],
 
   updateNodeTime: (nodeId, time) => {
