@@ -186,14 +186,35 @@ export default function NodeView({ nodeId }: NodeViewProps) {
           <>
             <button
               onClick={() => {
-                const modifiedTickets = node.tickets.filter(t => node.modifiedTicketIds.includes(t.id))
+                // Create ticket deltas for modified fields only
+                const ticketDeltas = node.modifiedTicketIds.map(ticketId => {
+                  const ticket = node.tickets.find(t => t.id === ticketId)
+                  if (!ticket) return null
+                  
+                  // Get modified fields for this ticket
+                  const modifiedFieldNames = node.modifiedFields[ticketId] || []
+                  
+                  // Create partial fields object
+                  const deltaFields: Record<string, any> = {}
+                  modifiedFieldNames.forEach(fieldName => {
+                    const field = ticket.fields[fieldName as keyof typeof ticket.fields]
+                    if (field) {
+                      deltaFields[fieldName] = field
+                    }
+                  })
+                  
+                  return {
+                    id: ticketId,
+                    fields: deltaFields
+                  }
+                }).filter(Boolean)
                 
                 const message = {
                   id: uuidv4(),
                   from: nodeId,
                   to: 'server' as NodeId,
                   type: 'push' as const,
-                  tickets: modifiedTickets,
+                  tickets: ticketDeltas,
                   timestamp: Date.now()
                 }
                 useSimulatorStore.getState().sendMessage(message)

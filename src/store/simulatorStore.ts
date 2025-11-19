@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId } from '../types'
+import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, TicketDelta } from '../types'
 import { createHLCField } from '../utils/hlc'
 import { mergeTickets } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
@@ -72,7 +72,8 @@ const createInitialNodeState = (nodeId: NodeId): NodeState => ({
   tickets: createInitialTickets(nodeId),
   inbox: [],
   outbox: [],
-  modifiedTicketIds: []
+  modifiedTicketIds: [],
+  modifiedFields: {}
 })
 
 export const useSimulatorStore = create<SimulatorState>((set, get) => ({
@@ -143,7 +144,12 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         [nodeId]: {
           ...state.nodes[nodeId],
           tickets: [...state.nodes[nodeId].tickets, newTicket],
-          modifiedTicketIds: [...state.nodes[nodeId].modifiedTicketIds, newTicketId]
+          modifiedTicketIds: [...state.nodes[nodeId].modifiedTicketIds, newTicketId],
+          // New tickets are fully modified
+          modifiedFields: {
+            ...state.nodes[nodeId].modifiedFields,
+            [newTicketId]: Object.keys(newTicket.fields)
+          }
         }
       }
     }))
@@ -162,6 +168,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     // Create new field value with HLC
     const newField = createHLCField(value, node.currentTime, nodeId, lastHLC)
 
+    const currentModifiedFields = node.modifiedFields[ticketId] || []
+    
     set(state => ({
       nodes: {
         ...state.nodes,
@@ -180,7 +188,13 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
           ),
           modifiedTicketIds: state.nodes[nodeId].modifiedTicketIds.includes(ticketId)
             ? state.nodes[nodeId].modifiedTicketIds
-            : [...state.nodes[nodeId].modifiedTicketIds, ticketId]
+            : [...state.nodes[nodeId].modifiedTicketIds, ticketId],
+          modifiedFields: {
+            ...state.nodes[nodeId].modifiedFields,
+            [ticketId]: currentModifiedFields.includes(fieldName) 
+              ? currentModifiedFields 
+              : [...currentModifiedFields, fieldName]
+          }
         }
       }
     }))
@@ -232,7 +246,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
 
     // Process each message in inbox
     node.inbox.forEach(message => {
-      const { merged, conflicts } = mergeTickets(currentTickets, message.tickets)
+      // Since we are now working with partial tickets (deltas), we need to cast or ensure mergeTickets handles them
+      // In mergeTickets, we iterate over remote fields anyway.
+      const { merged, conflicts } = mergeTickets(currentTickets, message.tickets as Ticket[])
       currentTickets = merged
       allConflicts = [...allConflicts, ...conflicts]
 
@@ -266,12 +282,23 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       clients.forEach(clientId => {
         const client = get().nodes[clientId]
         if (client.isOnline && client.isAppOnline) {
+          // For broadcast, we usually send the full state of changed tickets or everything
+          // But here we are broadcasting the *result* of the merge.
+          // The simulator logic was sending "currentTickets" which is EVERYTHING.
+          // The user wants "A message from a client should actually only be a modification to a single field"
+          // But that applies to PUSH (client -> server). 
+          // Broadcast (server -> client) might still be full state or deltas.
+          // Let's keep broadcast as full state for now unless requested otherwise, 
+          // OR better yet, broadcast only what changed. But simpler to keep as is for server.
+          // Wait, the type `SyncMessage` now expects `TicketDelta[]`.
+          // So we should convert `currentTickets` to `TicketDelta[]` which is compatible (Ticket extends TicketDelta effectively)
+          
           const broadcastMessage = {
             id: uuidv4(),
             from: 'server' as NodeId,
             to: clientId,
             type: 'broadcast' as const,
-            tickets: currentTickets,
+            tickets: currentTickets, // This sends full tickets, which is valid TicketDelta
             timestamp: Date.now()
           }
           get().sendMessage(broadcastMessage)
@@ -315,7 +342,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         ...state.nodes,
         [nodeId]: {
           ...state.nodes[nodeId],
-          modifiedTicketIds: []
+          modifiedTicketIds: [],
+          modifiedFields: {} // Clear modified fields too
         }
       }
     }))
