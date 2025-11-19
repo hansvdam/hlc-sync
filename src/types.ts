@@ -44,6 +44,7 @@ export interface NodeState {
   tickets: Ticket[]
   inbox: SyncMessage[]
   outbox: SyncMessage[]
+  modifiedTicketIds: string[] // IDs of tickets modified locally since last sync
 }
 
 // Log entry

@@ -33,6 +33,7 @@ interface SimulatorState {
   resetSimulator: () => void
   updateMessageProgress: (messageId: string, progress: number) => void
   deliverMessage: (messageId: string) => void
+  clearModifiedTickets: (nodeId: NodeId) => void
 }
 
 // Initial dummy tickets
@@ -70,7 +71,8 @@ const createInitialNodeState = (nodeId: NodeId): NodeState => ({
   isAppOnline: true,
   tickets: createInitialTickets(nodeId),
   inbox: [],
-  outbox: []
+  outbox: [],
+  modifiedTicketIds: []
 })
 
 export const useSimulatorStore = create<SimulatorState>((set, get) => ({
@@ -140,7 +142,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         ...state.nodes,
         [nodeId]: {
           ...state.nodes[nodeId],
-          tickets: [...state.nodes[nodeId].tickets, newTicket]
+          tickets: [...state.nodes[nodeId].tickets, newTicket],
+          modifiedTicketIds: [...state.nodes[nodeId].modifiedTicketIds, newTicketId]
         }
       }
     }))
@@ -174,7 +177,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
                   }
                 }
               : t
-          )
+          ),
+          modifiedTicketIds: state.nodes[nodeId].modifiedTicketIds.includes(ticketId)
+            ? state.nodes[nodeId].modifiedTicketIds
+            : [...state.nodes[nodeId].modifiedTicketIds, ticketId]
         }
       }
     }))
@@ -301,5 +307,17 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       logs: []
     })
     get().addLog('server', 'System', 'Simulator reset')
+  },
+
+  clearModifiedTickets: (nodeId) => {
+    set(state => ({
+      nodes: {
+        ...state.nodes,
+        [nodeId]: {
+          ...state.nodes[nodeId],
+          modifiedTicketIds: []
+        }
+      }
+    }))
   }
 }))
