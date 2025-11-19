@@ -124,6 +124,28 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     }))
     const newState = get().nodes[nodeId].isOnline
     get().addLog(nodeId, 'Device Status', newState ? 'Online' : 'Offline')
+
+    // Flush outbox if coming online
+    if (newState) {
+      const node = get().nodes[nodeId]
+      if (node.outbox.length > 0) {
+        const messagesToSend = node.outbox
+        set(state => ({
+          nodes: {
+            ...state.nodes,
+            [nodeId]: {
+              ...state.nodes[nodeId],
+              outbox: []
+            }
+          },
+          inFlightMessages: [
+            ...state.inFlightMessages,
+            ...messagesToSend.map(msg => ({ ...msg, progress: 0 }))
+          ]
+        }))
+        get().addLog(nodeId, 'Outbox Flushed', `Sent ${messagesToSend.length} messages`)
+      }
+    }
   },
 
   toggleAppOnline: (nodeId) => {
@@ -228,11 +250,27 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   },
 
   sendMessage: (message) => {
-    // Add to in-flight messages for animation
-    set(state => ({
-      inFlightMessages: [...state.inFlightMessages, { ...message, progress: 0 }]
-    }))
-    get().addLog(message.from, 'Message Sent', `${message.type} to ${message.to}`)
+    const node = get().nodes[message.from]
+    
+    if (!node.isOnline) {
+      // Queue in outbox
+      set(state => ({
+        nodes: {
+          ...state.nodes,
+          [message.from]: {
+            ...state.nodes[message.from],
+            outbox: [...state.nodes[message.from].outbox, message]
+          }
+        }
+      }))
+      get().addLog(message.from, 'Message Queued', `${message.type} to ${message.to}`)
+    } else {
+      // Add to in-flight messages for animation
+      set(state => ({
+        inFlightMessages: [...state.inFlightMessages, { ...message, progress: 0 }]
+      }))
+      get().addLog(message.from, 'Message Sent', `${message.type} to ${message.to}`)
+    }
   },
 
   updateMessageProgress: (messageId, progress) => {

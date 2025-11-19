@@ -222,10 +222,10 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                   useSimulatorStore.getState().sendMessage(message)
                   clearModifiedTickets(nodeId)
                 }}
-                disabled={!node.isOnline || !node.isAppOnline || node.modifiedTicketIds.length === 0}
+                disabled={!node.isAppOnline || node.modifiedTicketIds.length === 0}
                 className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm flex justify-between items-center"
               >
-                <span>Push to Server</span>
+                <span>Send</span>
                 {node.modifiedTicketIds.length > 0 && (
                   <span className="bg-blue-800 px-1.5 rounded text-xs">
                     {node.modifiedTicketIds.length}
