@@ -95,21 +95,6 @@ export default function NodeView({ nodeId }: NodeViewProps) {
 
       {/* Status indicators */}
       <div className="mb-4 flex gap-2 flex-shrink-0 flex-wrap">
-        {nodeId !== 'server' && (
-          <>
-            <span className={`text-xs px-2 py-1 rounded ${
-              node.isOnline ? 'bg-green-600' : 'bg-red-600'
-            }`}>
-              {node.isOnline ? 'Online' : 'Offline'}
-            </span>
-            <span className={`text-xs px-2 py-1 rounded ${
-              node.isAppOnline ? 'bg-green-600' : 'bg-red-600'
-            }`}>
-              {node.isAppOnline ? 'Running' : 'Stopped'}
-            </span>
-          </>
-        )}
-        
         {/* Revision Display */}
         {nodeId === 'server' ? (
           <span className="text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-200 border border-indigo-700">
