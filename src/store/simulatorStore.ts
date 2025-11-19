@@ -40,10 +40,19 @@ interface SimulatorState {
 const createInitialTickets = (nodeId: NodeId, baseTime: number): { tickets: Ticket[], lastHLC: HLCTimestamp } => {
   const baseHLC: HLCTimestamp = { timestamp: baseTime, counter: 0, nodeId }
   
+  // Initial tickets are created by server at baseTime - 10
+  const initialTicketHLC: HLCTimestamp = {
+    timestamp: baseTime - 10,
+    counter: 0,
+    nodeId: 'server'
+  }
+  
   const createField = (val: string) => {
-     // Use the base HLC for all initial fields so they don't increment the counter
-     // We do NOT update baseHLC here.
-     return createHLCField(val, baseTime, nodeId, baseHLC)
+     // Use the fixed initialTicketHLC for all initial fields
+     return {
+       value: val,
+       hlc: initialTicketHLC
+     }
   }
 
   const tickets = [
