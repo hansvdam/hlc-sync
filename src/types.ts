@@ -26,12 +26,18 @@ export type NodeId = 'client-a' | 'client-b' | 'server'
 // Message types for sync
 export type MessageType = 'push' | 'pull' | 'broadcast'
 
+// Partial ticket for delta updates
+export interface TicketDelta {
+  id: string
+  fields: Partial<Ticket['fields']>
+}
+
 export interface SyncMessage {
   id: string
   from: NodeId
   to: NodeId
   type: MessageType
-  tickets: Ticket[]
+  tickets: TicketDelta[] // Changed from Ticket[] to TicketDelta[] to support partial updates
   timestamp: number  // When message was created
 }
 
@@ -45,6 +51,7 @@ export interface NodeState {
   inbox: SyncMessage[]
   outbox: SyncMessage[]
   modifiedTicketIds: string[] // IDs of tickets modified locally since last sync
+  modifiedFields: Record<string, string[]> // Map of ticketId -> array of field names modified
 }
 
 // Log entry

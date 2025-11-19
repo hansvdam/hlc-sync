@@ -157,15 +157,11 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                 {expandedMessageId === msg.id && (
                   <div className="mt-2 pt-2 border-t border-gray-600">
                     <div className="font-semibold text-gray-400 mb-1">
-                      {msg.tickets.length} Ticket{msg.tickets.length !== 1 ? 's' : ''}
+                      Payload:
                     </div>
-                    <ul className="space-y-1 pl-2">
-                      {msg.tickets.map(t => (
-                        <li key={t.id} className="text-gray-300">
-                          {t.fields.ticket_name.value} <span className="text-gray-500">({t.id})</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <pre className="text-[10px] bg-gray-900 p-2 rounded overflow-auto max-h-40 text-green-400 font-mono">
+                      {JSON.stringify(msg, null, 2)}
+                    </pre>
                   </div>
                 )}
               </div>
