@@ -504,7 +504,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         merged = result.merged
         conflicts = result.conflicts
         
-        get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} from ${message.from}`)
+        get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`)
 
         // If server, broadcast to other clients
         if (nodeId === 'server') {

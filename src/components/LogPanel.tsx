@@ -15,7 +15,7 @@ export default function LogPanel() {
       <div className="px-4 py-2 bg-gray-900 font-bold text-sm">Operation Log</div>
       <div className="flex-1 overflow-auto px-4 py-2 font-mono text-xs space-y-1">
         {logs.map((log, index) => (
-          <div key={index} className="flex gap-4">
+          <div key={index} className="flex gap-4 whitespace-nowrap">
             <span className="text-gray-500">
               {new Date(log.timestamp).toLocaleTimeString()}
             </span>
