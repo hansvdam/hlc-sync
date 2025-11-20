@@ -24,7 +24,7 @@ export interface Ticket {
 export type NodeId = 'client-a' | 'client-b' | 'server'
 
 // Message types for sync
-export type MessageType = 'push' | 'pull' | 'broadcast' | 'update'
+export type MessageType = 'push' | 'pull' | 'broadcast' | 'update' | 'create'
 
 // Partial ticket for delta updates
 export interface TicketDelta {
@@ -53,7 +53,12 @@ export interface FieldUpdateMessage extends BaseMessage {
   hlc: HLCTimestamp
 }
 
-export type SyncMessage = BatchMessage | FieldUpdateMessage
+export interface TicketCreateMessage extends BaseMessage {
+  type: 'create'
+  ticket: Ticket
+}
+
+export type SyncMessage = BatchMessage | FieldUpdateMessage | TicketCreateMessage
 
 // Node state
 export interface NodeState {

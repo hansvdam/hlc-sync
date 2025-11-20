@@ -1,0 +1,1 @@
+When I create a new ticket, I want a create ticket message to be generated. Right now it creates updates for the default fields in the newly to be created ticket, implicitly creating the ticket in the other nodes, but that will not work in the future. So introduce an explicit message for creating a ticket. 

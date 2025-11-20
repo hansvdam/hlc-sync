@@ -121,7 +121,9 @@ export default function MessageCanvas() {
                   fill="white"
                 >
                   {message.type === 'update' 
-                    ? '1 update' 
+                    ? '1 update'
+                    : message.type === 'create'
+                    ? '1 ticket'
                     : `${message.tickets.length} ticket${message.tickets.length !== 1 ? 's' : ''}`
                   }
                 </text>

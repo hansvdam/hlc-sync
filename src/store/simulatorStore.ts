@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, HLCTimestamp, FieldUpdateMessage } from '../types'
+import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, HLCTimestamp, FieldUpdateMessage, TicketCreateMessage } from '../types'
 import { createHLCField, createHLC, getMaxHLCFromTickets } from '../utils/hlc'
 import { mergeTickets, mergeFieldUpdate } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
@@ -223,7 +223,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       id: newTicketId,
       fields: {
         ticket_name: createField(`New Ticket ${ticketCount}`),
-        dummy_field: createField('New dummy value')
+        dummy_field: createField('') // Empty default for dummy field
       }
     }
 
@@ -246,58 +246,53 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
     get().addLog(nodeId, 'Ticket Created', `Created ${newTicketId}`)
 
-    // Send update messages for each field
-    Object.entries(newTicket.fields).forEach(([fieldName, field]) => {
-      const updateMessage: FieldUpdateMessage = {
-        id: uuidv4(),
-        from: nodeId,
-        to: 'server', // Placeholder
-        type: 'update',
-        entity_id: newTicketId,
-        field: fieldName,
-        value: field.value,
-        timestamp: Date.now(),
-        hlc: field.hlc
-      }
+    // Create create message
+    const createMessage: TicketCreateMessage = {
+      id: uuidv4(),
+      from: nodeId,
+      to: 'server', // Placeholder
+      type: 'create',
+      ticket: newTicket,
+      timestamp: Date.now()
+    }
 
-      if (nodeId === 'server') {
-        // Server Logic: Increment revision, add to buffer
-        const serverState = get().nodes['server']
-        const newRevision = (serverState.serverRevision || 0) + 1
-        
-        set(state => ({
-          nodes: {
-            ...state.nodes,
-            server: {
-              ...state.nodes.server,
-              serverRevision: newRevision,
-              eventBuffer: [
-                ...(state.nodes.server.eventBuffer || []),
-                { ...updateMessage, revision: newRevision }
-              ]
-            }
+    if (nodeId === 'server') {
+      // Server Logic: Increment revision, add to buffer
+      const serverState = get().nodes['server']
+      const newRevision = (serverState.serverRevision || 0) + 1
+      
+      set(state => ({
+        nodes: {
+          ...state.nodes,
+          server: {
+            ...state.nodes.server,
+            serverRevision: newRevision,
+            eventBuffer: [
+              ...(state.nodes.server.eventBuffer || []),
+              { ...createMessage, revision: newRevision }
+            ]
           }
-        }))
-
-        // Broadcast to all clients if server is online
-        if (serverState.isOnline) {
-          // Send to all clients, including sender (to confirm revision)
-          ['client-a', 'client-b'].forEach(clientId => {
-            get().sendMessage({
-              ...updateMessage,
-              revision: newRevision,
-              to: clientId as NodeId
-            })
-          })
         }
-      } else {
-        // Send to server
-        get().sendMessage({
-          ...updateMessage,
-          to: 'server'
+      }))
+
+      // Broadcast to all clients if server is online
+      if (serverState.isOnline) {
+        // Send to all clients
+        ['client-a', 'client-b'].forEach(clientId => {
+          get().sendMessage({
+            ...createMessage,
+            revision: newRevision,
+            to: clientId as NodeId
+          })
         })
       }
-    })
+    } else {
+      // Send to server
+      get().sendMessage({
+        ...createMessage,
+        to: 'server'
+      })
+    }
   },
 
   editTicketField: (nodeId, ticketId, fieldName, value) => {
@@ -486,6 +481,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       
       if (message.type === 'update') {
         maxRemoteHLC = message.hlc
+      } else if (message.type === 'create') {
+        maxRemoteHLC = getMaxHLCFromTickets([{ ...message.ticket, fields: message.ticket.fields }])
       } else {
         // Batch message
         maxRemoteHLC = getMaxHLCFromTickets(message.tickets)
@@ -523,6 +520,42 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           })
         }
 
+      } else if (message.type === 'create') {
+        // Create ticket
+        // Treat as merging a full ticket (similar to batch but for one)
+        // Casting Ticket to TicketDelta-like structure for mergeTickets if needed, or just pass array
+        const result = mergeTickets(currentTickets, [message.ticket])
+        merged = result.merged
+        conflicts = result.conflicts
+        get().addLog(nodeId, 'Message Processed', `Created ticket ${message.ticket.id} from ${message.from}`)
+
+        // If server, broadcast to other clients
+        if (nodeId === 'server') {
+          currentServerRevision++
+          const messageWithRevision = { ...message, revision: currentServerRevision }
+          newEventBuffer = [...newEventBuffer, messageWithRevision];
+
+          ['client-a', 'client-b'].forEach(clientId => {
+            // Send to all clients
+            if (clientId !== message.from) {
+              get().sendMessage({
+                ...messageWithRevision,
+                id: uuidv4(),
+                from: 'server',
+                to: clientId as NodeId,
+              })
+            } else {
+                // Also send back to creator to confirm revision? 
+                // In original update logic: "Send to all clients, including sender (to confirm revision)"
+                get().sendMessage({
+                ...messageWithRevision,
+                id: uuidv4(),
+                from: 'server',
+                to: clientId as NodeId,
+              })
+            }
+          })
+        }
       } else {
         // Batch update
         const result = mergeTickets(currentTickets, message.tickets as Ticket[])
