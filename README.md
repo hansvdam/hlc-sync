@@ -19,7 +19,7 @@ The HLC Synchronization Simulator provides a hands-on way to explore distributed
 - **Real-time Clock Visualization**: Watch HLC timestamps update across nodes
 - **Interactive Ticket System**: Create and sync tickets between clients
 - **Message Queue Management**: Inbox/Outbox visualization with processing controls
-- **Network Delay Simulation**: Adjustable message delay (0-5 seconds) to simulate network latency
+- **Network Delay Simulation**: Adjustable message delay (0.5-3 seconds) to simulate network latency
 - **Operation Logging**: Detailed log of all system operations and state changes
 
 ### Visual Components
@@ -87,7 +87,7 @@ yarn dev
    - HLC timestamps are updated based on received messages
 
 3. **Adjusting Network Delay**:
-   - Use the slider at the top to simulate network latency (0-5 seconds)
+   - Use the slider at the top to simulate network latency (0.5-3 seconds)
    - Watch how delays affect message ordering and clock synchronization
 
 4. **Monitoring State**:

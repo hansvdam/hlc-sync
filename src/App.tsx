@@ -51,7 +51,7 @@ function App() {
             <input
               type="range"
               min="500"
-              max="5000"
+              max="3000"
               step="100"
               value={messageDelay}
               onChange={(e) => useSimulatorStore.setState({ messageDelay: parseInt(e.target.value) })}
