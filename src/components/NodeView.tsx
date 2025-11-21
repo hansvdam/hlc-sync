@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { NodeId } from '../types'
 import { useSimulatorStore } from '../store/simulatorStore'
 import TicketTree from './TicketTree'
@@ -12,6 +12,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
   const [showOutbox, setShowOutbox] = useState(false)
   const [showEventBuffer, setShowEventBuffer] = useState(false)
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null)
+  const [highlightRevision, setHighlightRevision] = useState(false)
   
   const node = useSimulatorStore(state => state.nodes[nodeId])
   const updateNodeTime = useSimulatorStore(state => state.updateNodeTime)
@@ -22,6 +23,18 @@ export default function NodeView({ nodeId }: NodeViewProps) {
     state.inFlightMessages.some(m => m.from === nodeId || m.to === nodeId)
   )
 
+  const currentRevision = nodeId === 'server' ? node.serverRevision : node.lastSeenServerRevision
+  const prevRevisionRef = useRef(currentRevision)
+
+  useEffect(() => {
+    if (prevRevisionRef.current !== currentRevision) {
+      setHighlightRevision(true)
+      const timer = setTimeout(() => setHighlightRevision(false), 1000)
+      prevRevisionRef.current = currentRevision
+      return () => clearTimeout(timer)
+    }
+  }, [currentRevision])
+
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     updateNodeTime(nodeId, parseInt(e.target.value))
   }
@@ -29,6 +42,12 @@ export default function NodeView({ nodeId }: NodeViewProps) {
   const toggleMessage = (messageId: string) => {
     setExpandedMessageId(expandedMessageId === messageId ? null : messageId)
   }
+
+  const revisionClass = `text-xs px-2 py-1 rounded border transition-colors duration-300 ${
+    highlightRevision 
+      ? 'bg-green-600 text-white border-green-400' 
+      : 'bg-indigo-900 text-indigo-200 border-indigo-700'
+  }`
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 flex flex-col border border-gray-700 h-auto min-h-full">
@@ -97,11 +116,11 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       <div className="mb-4 flex gap-2 flex-shrink-0 flex-wrap">
         {/* Revision Display */}
         {nodeId === 'server' ? (
-          <span className="text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-200 border border-indigo-700">
+          <span className={revisionClass}>
             Rev: {node.serverRevision}
           </span>
         ) : (
-          <span className="text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-200 border border-indigo-700">
+          <span className={revisionClass}>
             Server Rev: {node.lastSeenServerRevision}
           </span>
         )}
