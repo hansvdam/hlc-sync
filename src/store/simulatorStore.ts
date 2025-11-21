@@ -454,16 +454,27 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     }
 
     // Add to recipient's inbox
-    set(state => ({
-      nodes: {
-        ...state.nodes,
-        [message.to]: {
-          ...state.nodes[message.to],
-          inbox: [...state.nodes[message.to].inbox, message]
-        }
-      },
-      inFlightMessages: state.inFlightMessages.filter(m => m.id !== messageId)
-    }))
+    set(state => {
+      const node = state.nodes[message.to]
+      let newLastSeenServerRevision = node.lastSeenServerRevision
+
+      // If we are a client receiving a message with a revision, update our last seen revision immediately
+      if (message.to !== 'server' && message.revision !== undefined) {
+        newLastSeenServerRevision = Math.max(node.lastSeenServerRevision || 0, message.revision)
+      }
+
+      return {
+        nodes: {
+          ...state.nodes,
+          [message.to]: {
+            ...state.nodes[message.to],
+            inbox: [...state.nodes[message.to].inbox, message],
+            lastSeenServerRevision: newLastSeenServerRevision
+          }
+        },
+        inFlightMessages: state.inFlightMessages.filter(m => m.id !== messageId)
+      }
+    })
 
     get().addLog(message.to, 'Message Received', `${message.type} from ${message.from}`)
 
@@ -488,11 +499,6 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
     // Process each message in inbox
     node.inbox.forEach(message => {
-      // Track revision for clients
-      if (nodeId !== 'server' && message.revision) {
-        lastSeenServerRevision = Math.max(lastSeenServerRevision, message.revision)
-      }
-
       // Update HLC based on incoming message
       let maxRemoteHLC: HLCTimestamp | undefined
       
