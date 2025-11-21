@@ -287,14 +287,16 @@ export default function NodeView({ nodeId }: NodeViewProps) {
 
         {/* Sync buttons */}
         <div className="space-y-2 flex-shrink-0">
-          {/* Only show Process Inbox button for both client and server */}
-          <button
-            onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
-            disabled={node.inbox.length === 0}
-            className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
-          >
-            Process Inbox ({node.inbox.length})
-          </button>
+          {/* Only show Process Inbox button for server */}
+          {nodeId === 'server' && (
+            <button
+              onClick={() => useSimulatorStore.getState().processInbox(nodeId)}
+              disabled={node.inbox.length === 0}
+              className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm"
+            >
+              Process Inbox ({node.inbox.length})
+            </button>
+          )}
         </div>
 
         {/* Ticket tree */}

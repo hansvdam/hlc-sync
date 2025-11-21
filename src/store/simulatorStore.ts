@@ -207,6 +207,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     }))
     const newState = get().nodes[nodeId].isAppOnline
     get().addLog(nodeId, 'App Status', newState ? 'Running' : 'Stopped')
+
+    // Auto-process inbox if app is started and we're not server
+    if (newState && nodeId !== 'server') {
+      get().processInbox(nodeId)
+    }
   },
 
   createTicket: (nodeId) => {
@@ -461,6 +466,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     }))
 
     get().addLog(message.to, 'Message Received', `${message.type} from ${message.from}`)
+
+    // Auto-process if recipient is client and app is running
+    if (message.to !== 'server' && get().nodes[message.to].isAppOnline) {
+      get().processInbox(message.to)
+    }
   },
 
   processInbox: (nodeId) => {
