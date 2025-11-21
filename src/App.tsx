@@ -73,15 +73,19 @@ function App() {
 
       {/* Main content area with message visualization */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Three columns */}
-        <div className="h-full grid grid-cols-3 gap-4 p-4">
-          <NodeView nodeId="client-a" />
-          <NodeView nodeId="server" />
-          <NodeView nodeId="client-b" />
+        {/* Message canvas overlay - fixed relative to view */}
+        <div className="absolute inset-0 z-10 pointer-events-none">
+          <MessageCanvas />
         </div>
 
-        {/* Message canvas overlay */}
-        <MessageCanvas />
+        {/* Three columns - Scrollable Container */}
+        <div className="h-full overflow-y-auto overflow-x-hidden">
+          <div className="min-h-full grid grid-cols-3 gap-4 p-4 items-start">
+            <NodeView nodeId="client-a" />
+            <NodeView nodeId="server" />
+            <NodeView nodeId="client-b" />
+          </div>
+        </div>
       </div>
 
       {/* Resizer */}

@@ -31,7 +31,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 flex flex-col border border-gray-700 h-full">
+    <div className="bg-gray-800 rounded-lg p-4 flex flex-col border border-gray-700 h-auto min-h-full">
       {/* Header */}
       <div className="mb-4 flex-shrink-0">
         <h2 className="text-xl font-bold mb-2 capitalize flex items-center gap-2">
@@ -145,8 +145,8 @@ export default function NodeView({ nodeId }: NodeViewProps) {
         )}
       </div>
 
-      {/* Scrollable content area */}
-      <div className="flex-1 overflow-auto min-h-0 border-t border-gray-700 pt-4 space-y-4">
+      {/* Content area */}
+      <div className="border-t border-gray-700 pt-4 space-y-4">
         {/* Expanded Inbox View */}
         {showInbox && node.inbox.length > 0 && (
           <div className="bg-gray-800 border border-gray-600 rounded p-2">
