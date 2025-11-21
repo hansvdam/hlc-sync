@@ -11,8 +11,10 @@ export function mergeTickets(
 ): {
   merged: Ticket[]
   conflicts: Array<{ ticketId: string, field: string, winner: string }>
+  updatedFields: Array<{ ticketId: string, field: string }>
 } {
   const conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+  const updatedFields: Array<{ ticketId: string, field: string }> = []
   const ticketMap = new Map<string, Ticket>()
 
   // Start with local tickets
@@ -31,6 +33,16 @@ export function mergeTickets(
       // Ideally we'd need a full ticket creation if it doesn't exist.
       // If it's a TicketDelta, we cast it to Ticket (risky but assuming for now)
       ticketMap.set(remoteTicket.id, remoteTicket as Ticket)
+      
+      // Track all fields as updated since it's a new ticket
+      if (remoteTicket.fields) {
+        Object.keys(remoteTicket.fields).forEach(fieldName => {
+          updatedFields.push({
+            ticketId: remoteTicket.id,
+            field: fieldName
+          })
+        })
+      }
     } else {
       // Merge fields
       const mergedFields: Ticket['fields'] = { ...localTicket.fields }
@@ -46,6 +58,10 @@ export function mergeTickets(
             if (comparison < 0) {
               // Remote wins
               mergedFields[fieldName as keyof typeof mergedFields] = remoteField
+              updatedFields.push({
+                ticketId: remoteTicket.id,
+                field: fieldName
+              })
               conflicts.push({
                 ticketId: remoteTicket.id,
                 field: fieldName,
@@ -73,7 +89,8 @@ export function mergeTickets(
 
   return {
     merged: Array.from(ticketMap.values()),
-    conflicts
+    conflicts,
+    updatedFields
   }
 }
 
@@ -83,8 +100,10 @@ export function mergeFieldUpdate(
 ): {
   merged: Ticket[]
   conflicts: Array<{ ticketId: string, field: string, winner: string }>
+  updatedFields: Array<{ ticketId: string, field: string }>
 } {
   const conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+  const updatedFields: Array<{ ticketId: string, field: string }> = []
   const ticketMap = new Map<string, Ticket>()
 
   // Start with local tickets
@@ -116,6 +135,11 @@ export function mergeFieldUpdate(
         ticketMap.set(update.entity_id, {
           ...localTicket,
           fields: mergedFields
+        })
+        
+        updatedFields.push({
+          ticketId: update.entity_id,
+          field: update.field
         })
         
         conflicts.push({
@@ -153,6 +177,11 @@ export function mergeFieldUpdate(
 
     ticketMap.set(update.entity_id, newTicket)
     
+    updatedFields.push({
+      ticketId: update.entity_id,
+      field: update.field
+    })
+
     conflicts.push({
       ticketId: update.entity_id,
       field: update.field,
@@ -162,6 +191,7 @@ export function mergeFieldUpdate(
 
   return {
     merged: Array.from(ticketMap.values()),
-    conflicts
+    conflicts,
+    updatedFields
   }
 }

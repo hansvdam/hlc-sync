@@ -75,6 +75,7 @@ export interface NodeState {
   serverRevision?: number // Server only, tracks current revision
   lastSeenServerRevision?: number // Clients only, tracks last processed server revision
   eventBuffer?: SyncMessage[] // Server only, history of mutations
+  highlightedFields: Record<string, boolean> // Map of "ticketId:fieldName" -> boolean
 }
 
 // Log entry

@@ -34,6 +34,8 @@ interface SimulatorState {
   updateMessageProgress: (messageId: string, progress: number) => void
   deliverMessage: (messageId: string) => void
   clearModifiedTickets: (nodeId: NodeId) => void
+  setFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
+  clearFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
 }
 
 // Initial dummy tickets
@@ -102,7 +104,8 @@ const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?:
     lastHLC,
     serverRevision: nodeId === 'server' ? 0 : undefined,
     eventBuffer: nodeId === 'server' ? [] : undefined,
-    lastSeenServerRevision: nodeId !== 'server' ? 0 : undefined
+    lastSeenServerRevision: nodeId !== 'server' ? 0 : undefined,
+    highlightedFields: {}
   }
 }
 
@@ -299,6 +302,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     const node = get().nodes[nodeId]
     const ticket = node.tickets.find(t => t.id === ticketId)
     if (!ticket) return
+    
+    // Optimistically update highlighted fields for local edits
+    get().setFieldHighlight(nodeId, [{ ticketId, field: fieldName }])
 
     // Use node.lastHLC instead of ticket field's HLC
     const lastHLC = node.lastHLC
@@ -464,6 +470,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     let currentTickets = node.tickets
     let allConflicts: Array<{ ticketId: string, field: string, winner: string }> = []
     let currentHLC = node.lastHLC
+    let allUpdatedFields: Array<{ ticketId: string, field: string }> = []
     
     let currentServerRevision = node.serverRevision || 0
     let newEventBuffer = node.eventBuffer || []
@@ -493,6 +500,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
 
       let conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+      let updatedFields: Array<{ ticketId: string, field: string }> = []
       let merged: Ticket[] = currentTickets
 
       if (message.type === 'update') {
@@ -500,6 +508,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         const result = mergeFieldUpdate(currentTickets, message)
         merged = result.merged
         conflicts = result.conflicts
+        updatedFields = result.updatedFields
         
         get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`)
 
@@ -527,6 +536,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         const result = mergeTickets(currentTickets, [message.ticket])
         merged = result.merged
         conflicts = result.conflicts
+        updatedFields = result.updatedFields
         get().addLog(nodeId, 'Message Processed', `Created ticket ${message.ticket.id} from ${message.from}`)
 
         // If server, broadcast to other clients
@@ -561,12 +571,19 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         const result = mergeTickets(currentTickets, message.tickets as Ticket[])
         merged = result.merged
         conflicts = result.conflicts
+        updatedFields = result.updatedFields
         get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`)
       }
 
       currentTickets = merged
       allConflicts = [...allConflicts, ...conflicts]
+      allUpdatedFields = [...allUpdatedFields, ...updatedFields]
     })
+
+    // Highlight updated fields
+    if (allUpdatedFields.length > 0) {
+      get().setFieldHighlight(nodeId, allUpdatedFields)
+    }
 
     // Log conflicts
     allConflicts.forEach(conflict => {
@@ -635,5 +652,48 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         }
       }
     }))
+  },
+
+  setFieldHighlight: (nodeId, updates) => {
+    set(state => {
+      const newHighlights = { ...state.nodes[nodeId].highlightedFields }
+      updates.forEach(({ ticketId, field }) => {
+        newHighlights[`${ticketId}:${field}`] = true
+      })
+      
+      return {
+        nodes: {
+          ...state.nodes,
+          [nodeId]: {
+            ...state.nodes[nodeId],
+            highlightedFields: newHighlights
+          }
+        }
+      }
+    })
+
+    // Set timeout to clear highlights
+    setTimeout(() => {
+      get().clearFieldHighlight(nodeId, updates)
+    }, 1000)
+  },
+
+  clearFieldHighlight: (nodeId, updates) => {
+    set(state => {
+      const newHighlights = { ...state.nodes[nodeId].highlightedFields }
+      updates.forEach(({ ticketId, field }) => {
+        delete newHighlights[`${ticketId}:${field}`]
+      })
+      
+      return {
+        nodes: {
+          ...state.nodes,
+          [nodeId]: {
+            ...state.nodes[nodeId],
+            highlightedFields: newHighlights
+          }
+        }
+      }
+    })
   }
 }})
