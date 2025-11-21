@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useSimulatorStore } from './store/simulatorStore'
 import NodeView from './components/NodeView'
 import LogPanel from './components/LogPanel'
@@ -8,11 +9,39 @@ import HelpOverlay from './components/HelpOverlay'
 function App() {
   const resetSimulator = useSimulatorStore(state => state.resetSimulator)
   const messageDelay = useSimulatorStore(state => state.messageDelay)
+  const [logHeight, setLogHeight] = useState(192)
+  const [isDragging, setIsDragging] = useState(false)
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return
+      const newHeight = window.innerHeight - e.clientY
+      if (newHeight > 50 && newHeight < window.innerHeight - 100) {
+        setLogHeight(newHeight)
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      document.body.style.cursor = 'default'
+    }
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'ns-resize'
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'default'
+    }
+  }, [isDragging])
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-white">
       {/* Header */}
-      <div className="bg-gray-800 py-2 px-4 flex justify-between items-center border-b border-gray-700">
+      <div className="bg-gray-800 py-2 px-4 flex justify-between items-center border-b border-gray-700 flex-shrink-0">
         <h1 className="text-xl font-bold">HLC Synchronization Simulator</h1>
 
         <div className="flex items-center gap-4">
@@ -55,8 +84,19 @@ function App() {
         <MessageCanvas />
       </div>
 
+      {/* Resizer */}
+      <div 
+        className="h-1 bg-gray-700 hover:bg-blue-500 cursor-ns-resize transition-colors z-10 flex-shrink-0"
+        onMouseDown={(e) => {
+          e.preventDefault()
+          setIsDragging(true)
+        }}
+      />
+
       {/* Log panel at bottom */}
-      <LogPanel />
+      <div style={{ height: logHeight }} className="flex-shrink-0 relative">
+        <LogPanel />
+      </div>
 
       {/* Help overlay */}
       <HelpOverlay />

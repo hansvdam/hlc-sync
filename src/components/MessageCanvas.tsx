@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSimulatorStore } from '../store/simulatorStore'
 
 export default function MessageCanvas() {
@@ -7,6 +7,34 @@ export default function MessageCanvas() {
   const deliverMessage = useSimulatorStore(state => state.deliverMessage)
   const messageDelay = useSimulatorStore(state => state.messageDelay)
   const animationFrameRef = useRef<number | undefined>(undefined)
+  const containerRef = useRef<SVGSVGElement>(null)
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight })
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current.parentElement || { clientWidth: window.innerWidth, clientHeight: window.innerHeight }
+        setDimensions({ width: clientWidth, height: clientHeight })
+      }
+    }
+
+    window.addEventListener('resize', updateDimensions)
+    // Initial update
+    updateDimensions()
+    
+    // Also set up a resize observer for the parent element if possible, 
+    // but for now window resize + interval or prop change might be needed if the parent resizes without window resize.
+    // Since we are implementing a drag resizer, the parent size will change.
+    const resizeObserver = new ResizeObserver(updateDimensions)
+    if (containerRef.current?.parentElement) {
+      resizeObserver.observe(containerRef.current.parentElement)
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateDimensions)
+      resizeObserver.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
     let lastTime = Date.now()
@@ -44,9 +72,8 @@ export default function MessageCanvas() {
 
   // Calculate positions for nodes (assuming three-column grid)
   const getNodePosition = (nodeId: string): { x: number, y: number } => {
-    const width = window.innerWidth
-    const height = window.innerHeight - 48 - 192 // Subtract header and log panel
-
+    const { width, height } = dimensions
+    
     const positions = {
       'client-a': { x: width * 0.16, y: height * 0.5 },
       'server': { x: width * 0.5, y: height * 0.5 },
@@ -58,8 +85,9 @@ export default function MessageCanvas() {
 
   return (
     <svg
+      ref={containerRef}
       className="absolute inset-0 pointer-events-none"
-      style={{ top: '64px', height: 'calc(100% - 64px - 192px)' }}
+      style={{ width: '100%', height: '100%' }}
     >
       {inFlightMessages.map(message => {
         const from = getNodePosition(message.from)

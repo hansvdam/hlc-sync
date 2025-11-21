@@ -11,7 +11,7 @@ export default function LogPanel() {
   }, [logs])
 
   return (
-    <div className="h-48 bg-gray-800 border-t border-gray-700 flex flex-col">
+    <div className="h-full bg-gray-800 border-t border-gray-700 flex flex-col">
       <div className="px-4 py-2 bg-gray-900 font-bold text-sm">Operation Log</div>
       <div className="flex-1 overflow-auto px-4 py-2 font-mono text-xs space-y-1">
         {logs.map((log, index) => (
