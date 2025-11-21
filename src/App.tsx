@@ -12,8 +12,8 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-white">
       {/* Header */}
-      <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
-        <h1 className="text-2xl font-bold">HLC Synchronization Simulator</h1>
+      <div className="bg-gray-800 py-2 px-4 flex justify-between items-center border-b border-gray-700">
+        <h1 className="text-xl font-bold">HLC Synchronization Simulator</h1>
 
         <div className="flex items-center gap-4">
           {/* Message delay control */}
@@ -35,7 +35,7 @@ function App() {
 
           <button
             onClick={resetSimulator}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded"
+            className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
           >
             Reset
           </button>
