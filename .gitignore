@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 /hack/
 /.claude/
-/.cursor/
+/.cursor/dev-dist
