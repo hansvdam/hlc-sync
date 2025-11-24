@@ -104,11 +104,11 @@ export function mergeFieldUpdate(
 } {
   const conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
   const updatedFields: Array<{ ticketId: string, field: string }> = []
-  const ticketMap = new Map<string, Ticket>()
+  const localTicketMap = new Map<string, Ticket>()
 
   // Start with local tickets
   local.forEach(ticket => {
-    ticketMap.set(ticket.id, ticket)
+    localTicketMap.set(ticket.id, ticket)
   })
 
   // Construct the remote field object
@@ -118,7 +118,8 @@ export function mergeFieldUpdate(
   }
   
   const fieldName = update.field as keyof Ticket['fields']
-  const localTicket = ticketMap.get(update.entity_id)
+  // localTicket represents the current state of the ticket on the device (node) receiving the update
+  const localTicket = localTicketMap.get(update.entity_id)
 
   if (localTicket) {
     const localField = localTicket.fields[fieldName]
@@ -132,7 +133,7 @@ export function mergeFieldUpdate(
           ...localTicket.fields,
           [fieldName]: remoteField
         }
-        ticketMap.set(update.entity_id, {
+        localTicketMap.set(update.entity_id, {
           ...localTicket,
           fields: mergedFields
         })
@@ -175,7 +176,7 @@ export function mergeFieldUpdate(
       }
     }
 
-    ticketMap.set(update.entity_id, newTicket)
+    localTicketMap.set(update.entity_id, newTicket)
     
     updatedFields.push({
       ticketId: update.entity_id,
@@ -190,7 +191,7 @@ export function mergeFieldUpdate(
   }
 
   return {
-    merged: Array.from(ticketMap.values()),
+    merged: Array.from(localTicketMap.values()),
     conflicts,
     updatedFields
   }
