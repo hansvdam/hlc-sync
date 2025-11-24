@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, HLCTimestamp, FieldUpdateMessage, TicketCreateMessage } from '../types'
-import { createHLCField, createHLC, getMaxHLCFromTickets } from '../utils/hlc'
-import { mergeTickets, mergeFieldUpdate } from '../utils/merge'
+import { createHLCField, createHLC, getMaxHLCFromTickets, formatHLC } from '../utils/hlc'
+import { mergeTickets, mergeFieldUpdate, type ConflictInfo } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
 
 type InFlightMessage = SyncMessage & {
@@ -490,7 +490,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     if (node.inbox.length === 0) return
 
     let currentTickets = node.tickets
-    let allConflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
+    let allConflicts: ConflictInfo[] = []
     let currentHLC = node.lastHLC
     let allUpdatedFields: Array<{ ticketId: string, field: string }> = []
     
@@ -604,10 +604,13 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
     // Log conflicts
     allConflicts.forEach(conflict => {
+      const localInfo = conflict.localHLC ? formatHLC(conflict.localHLC) : 'none'
+      const remoteInfo = conflict.remoteHLC ? formatHLC(conflict.remoteHLC) : 'none'
+
       get().addLog(
         nodeId,
         'Conflict Resolved',
-        `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason})`
+        `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason}). HLCs: Local=${localInfo} vs Remote=${remoteInfo}`
       )
     })
 

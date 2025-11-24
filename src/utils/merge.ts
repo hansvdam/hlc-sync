@@ -1,5 +1,14 @@
-import type { Ticket, FieldUpdateMessage, TicketDelta, HLCField } from '../types'
+import type { Ticket, FieldUpdateMessage, TicketDelta, HLCField, HLCTimestamp } from '../types'
 import { compareHLC } from './hlc'
+
+export interface ConflictInfo {
+  ticketId: string
+  field: string
+  winner: string
+  reason: string
+  localHLC?: HLCTimestamp
+  remoteHLC?: HLCTimestamp
+}
 
 /**
  * Merge remote tickets into local tickets
@@ -10,10 +19,10 @@ export function mergeTickets(
   remote: TicketDelta[] | Ticket[]
 ): {
   merged: Ticket[]
-  conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }>
+  conflicts: ConflictInfo[]
   updatedFields: Array<{ ticketId: string, field: string }>
 } {
-  const conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
+  const conflicts: ConflictInfo[] = []
   const updatedFields: Array<{ ticketId: string, field: string }> = []
   const ticketMap = new Map<string, Ticket>()
 
@@ -66,7 +75,9 @@ export function mergeTickets(
                 ticketId: remoteTicket.id,
                 field: fieldName,
                 winner: remoteField.hlc.nodeId,
-                reason
+                reason,
+                localHLC: localField.hlc,
+                remoteHLC: remoteField.hlc
               })
             } else if (comparison > 0) {
               // Local wins (already in mergedFields)
@@ -74,7 +85,9 @@ export function mergeTickets(
                 ticketId: remoteTicket.id,
                 field: fieldName,
                 winner: localField.hlc.nodeId,
-                reason
+                reason,
+                localHLC: localField.hlc,
+                remoteHLC: remoteField.hlc
               })
             }
             // If equal, no conflict (same value)
@@ -101,10 +114,10 @@ export function mergeFieldUpdate(
   update: FieldUpdateMessage
 ): {
   merged: Ticket[]
-  conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }>
+  conflicts: ConflictInfo[]
   updatedFields: Array<{ ticketId: string, field: string }>
 } {
-  const conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
+  const conflicts: ConflictInfo[] = []
   const updatedFields: Array<{ ticketId: string, field: string }> = []
   const localTicketMap = new Map<string, Ticket>()
 
@@ -149,7 +162,9 @@ export function mergeFieldUpdate(
           ticketId: update.entity_id,
           field: update.field,
           winner: update.hlc.nodeId,
-          reason
+          reason,
+          localHLC: localField.hlc,
+          remoteHLC: remoteField.hlc
         })
       } else if (comparison > 0) {
         // Local wins - do nothing
@@ -157,7 +172,9 @@ export function mergeFieldUpdate(
           ticketId: update.entity_id,
           field: update.field,
           winner: localField.hlc.nodeId,
-          reason
+          reason,
+          localHLC: localField.hlc,
+          remoteHLC: remoteField.hlc
         })
       }
     }
@@ -191,7 +208,8 @@ export function mergeFieldUpdate(
       ticketId: update.entity_id,
       field: update.field,
       winner: update.hlc.nodeId, // Remote "wins" because it's a new create
-      reason: "New ticket created from update"
+      reason: "New ticket created from update",
+      remoteHLC: update.hlc
     })
   }
 
