@@ -28,6 +28,11 @@ export default function LogPanel() {
             </span>
             <span className="text-gray-300">{log.action}:</span>
             <span className="text-gray-400">{log.details}</span>
+            {log.data && (
+              <span className="text-gray-500 ml-2">
+                {JSON.stringify(log.data)}
+              </span>
+            )}
           </div>
         ))}
         <div ref={logEndRef} />

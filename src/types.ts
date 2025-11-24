@@ -84,4 +84,5 @@ export interface LogEntry {
   nodeId: NodeId
   action: string
   details: string
+  data?: any
 }

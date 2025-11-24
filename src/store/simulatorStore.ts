@@ -29,7 +29,7 @@ interface SimulatorState {
   editTicketField: (nodeId: NodeId, ticketId: string, fieldName: string, value: string) => void
   sendMessage: (message: SyncMessage) => void
   processInbox: (nodeId: NodeId) => void
-  addLog: (nodeId: NodeId, action: string, details: string) => void
+  addLog: (nodeId: NodeId, action: string, details: string, data?: any) => void
   resetSimulator: () => void
   updateMessageProgress: (messageId: string, progress: number) => void
   deliverMessage: (messageId: string) => void
@@ -408,7 +408,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     
     if (!node.isOnline) {
       if (message.from === 'server') {
-        get().addLog(message.from, 'Broadcasting Paused', 'Server is offline')
+        get().addLog(message.from, 'Broadcasting Paused', 'Server is offline', message)
         return
       }
       // Queue in outbox
@@ -421,13 +421,13 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           }
         }
       }))
-      get().addLog(message.from, 'Message Queued', `${message.type} to ${message.to}`)
+      get().addLog(message.from, 'Message Queued', `${message.type} to ${message.to}`, message)
     } else {
       // Add to in-flight messages for animation
       set(state => ({
         inFlightMessages: [...state.inFlightMessages, { ...message, progress: 0 }]
       }))
-      get().addLog(message.from, 'Message Sent', `${message.type} to ${message.to}`)
+      get().addLog(message.from, 'Message Sent', `${message.type} to ${message.to}`, message)
     }
   },
 
@@ -449,7 +449,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       set(state => ({
         inFlightMessages: state.inFlightMessages.filter(m => m.id !== messageId)
       }))
-      get().addLog(message.to, 'Message Dropped', `Recipient offline: ${message.type} from ${message.from}`)
+      get().addLog(message.to, 'Message Dropped', `Recipient offline: ${message.type} from ${message.from}`, message)
       return
     }
 
@@ -476,7 +476,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       }
     })
 
-    get().addLog(message.to, 'Message Received', `${message.type} from ${message.from}`)
+    get().addLog(message.to, 'Message Received', `${message.type} from ${message.from}`, message)
 
     // Auto-process if recipient is client and app is running
     if (message.to !== 'server' && get().nodes[message.to].isAppOnline) {
@@ -526,7 +526,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         conflicts = result.conflicts
         updatedFields = result.updatedFields
         
-        get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`)
+        get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`, message)
 
         // If server, broadcast to other clients
         if (nodeId === 'server') {
@@ -553,7 +553,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         merged = result.merged
         conflicts = result.conflicts
         updatedFields = result.updatedFields
-        get().addLog(nodeId, 'Message Processed', `Created ticket ${message.ticket.id} from ${message.from}`)
+        get().addLog(nodeId, 'Message Processed', `Created ticket ${message.ticket.id} from ${message.from}`, message)
 
         // If server, broadcast to other clients
         if (nodeId === 'server') {
@@ -588,7 +588,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         merged = result.merged
         conflicts = result.conflicts
         updatedFields = result.updatedFields
-        get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`)
+        get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`, message)
       }
 
       currentTickets = merged
@@ -629,7 +629,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     get().addLog(nodeId, 'Inbox Cleared', `Processed ${node.inbox.length} messages`)
   },
 
-  addLog: (nodeId, action, details) => {
+  addLog: (nodeId, action, details, data) => {
     set(state => ({
       logs: [
         ...state.logs,
@@ -637,7 +637,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           timestamp: Date.now(),
           nodeId,
           action,
-          details
+          details,
+          data
         }
       ]
     }))
