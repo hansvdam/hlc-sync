@@ -490,7 +490,6 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     if (node.inbox.length === 0) return
 
     let currentTickets = node.tickets
-    let allConflicts: ConflictInfo[] = []
     let currentHLC = node.lastHLC
     let allUpdatedFields: Array<{ ticketId: string, field: string }> = []
     
@@ -516,7 +515,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       // We treat this as a "receive" event in HLC
       currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
 
-      let conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
+      let conflicts: ConflictInfo[] = []
       let updatedFields: Array<{ ticketId: string, field: string }> = []
       let merged: Ticket[] = currentTickets
 
@@ -528,6 +527,18 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         updatedFields = result.updatedFields
         
         get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`, message)
+
+        // Log conflicts immediately
+        conflicts.forEach(conflict => {
+          const localInfo = conflict.localHLC ? formatHLC(conflict.localHLC) : 'none'
+          const remoteInfo = conflict.remoteHLC ? formatHLC(conflict.remoteHLC) : 'none'
+
+          get().addLog(
+            nodeId,
+            'Conflict Resolved',
+            `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason}). HLCs: Local=${localInfo} vs Remote=${remoteInfo}`
+          )
+        })
 
         // If server, broadcast to other clients
         if (nodeId === 'server') {
@@ -555,6 +566,18 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         conflicts = result.conflicts
         updatedFields = result.updatedFields
         get().addLog(nodeId, 'Message Processed', `Created ticket ${message.ticket.id} from ${message.from}`, message)
+
+        // Log conflicts immediately
+        conflicts.forEach(conflict => {
+          const localInfo = conflict.localHLC ? formatHLC(conflict.localHLC) : 'none'
+          const remoteInfo = conflict.remoteHLC ? formatHLC(conflict.remoteHLC) : 'none'
+
+          get().addLog(
+            nodeId,
+            'Conflict Resolved',
+            `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason}). HLCs: Local=${localInfo} vs Remote=${remoteInfo}`
+          )
+        })
 
         // If server, broadcast to other clients
         if (nodeId === 'server') {
@@ -590,10 +613,23 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         conflicts = result.conflicts
         updatedFields = result.updatedFields
         get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`, message)
+        
+        // Log conflicts immediately
+        conflicts.forEach(conflict => {
+          const localInfo = conflict.localHLC ? formatHLC(conflict.localHLC) : 'none'
+          const remoteInfo = conflict.remoteHLC ? formatHLC(conflict.remoteHLC) : 'none'
+
+          get().addLog(
+            nodeId,
+            'Conflict Resolved',
+            `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason}). HLCs: Local=${localInfo} vs Remote=${remoteInfo}`
+          )
+        })
       }
 
       currentTickets = merged
-      allConflicts = [...allConflicts, ...conflicts]
+      // Conflicts already logged, no need to accumulate for later logging
+      // allConflicts = [...allConflicts, ...conflicts] 
       allUpdatedFields = [...allUpdatedFields, ...updatedFields]
     })
 
@@ -601,18 +637,6 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     if (allUpdatedFields.length > 0) {
       get().setFieldHighlight(nodeId, allUpdatedFields)
     }
-
-    // Log conflicts
-    allConflicts.forEach(conflict => {
-      const localInfo = conflict.localHLC ? formatHLC(conflict.localHLC) : 'none'
-      const remoteInfo = conflict.remoteHLC ? formatHLC(conflict.remoteHLC) : 'none'
-
-      get().addLog(
-        nodeId,
-        'Conflict Resolved',
-        `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason}). HLCs: Local=${localInfo} vs Remote=${remoteInfo}`
-      )
-    })
 
     // Update node state
     set(state => ({
