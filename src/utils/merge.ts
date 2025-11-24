@@ -95,7 +95,7 @@ export function mergeTickets(
 }
 
 export function mergeFieldUpdate(
-  local: Ticket[],
+  localTickets: Ticket[],
   update: FieldUpdateMessage
 ): {
   merged: Ticket[]
@@ -107,7 +107,7 @@ export function mergeFieldUpdate(
   const localTicketMap = new Map<string, Ticket>()
 
   // Start with local tickets
-  local.forEach(ticket => {
+  localTickets.forEach(ticket => {
     localTicketMap.set(ticket.id, ticket)
   })
 
