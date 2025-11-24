@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { NodeId } from '../types'
 import { useSimulatorStore } from '../store/simulatorStore'
+import { formatHLC } from '../utils/hlc'
 import TicketTree from './TicketTree'
 
 interface NodeViewProps {
@@ -136,9 +137,16 @@ export default function NodeView({ nodeId }: NodeViewProps) {
             Rev: {node.serverRevision}
           </span>
         ) : (
-          <span className={revisionClass}>
-            Server Rev: {node.lastSeenServerRevision}
-          </span>
+          <>
+            <span className={revisionClass}>
+              Server Rev: {node.lastSeenServerRevision}
+            </span>
+            {node.lastHLC && (
+              <span className="text-xs px-2 py-1 rounded border bg-gray-700 text-gray-300 border-gray-600 font-mono">
+                HLC: {formatHLC(node.lastHLC)}
+              </span>
+            )}
+          </>
         )}
       </div>
 
