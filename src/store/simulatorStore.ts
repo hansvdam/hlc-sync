@@ -96,7 +96,7 @@ const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?:
     nodeId,
     currentTime: now,
     isOnline: true,
-    isAppOnline: nodeId !== 'server', // Server defaults to manual processing
+    isAppOnline: true, // Defaults to auto processing for all nodes
     tickets,
     inbox: [],
     outbox: [],
