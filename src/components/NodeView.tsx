@@ -74,7 +74,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
           </div>
 
           {/* Online toggles (only for clients) */}
-          {nodeId !== 'server' && (
+          {nodeId !== 'server' ? (
             <>
               <div className="flex items-center justify-between">
                 <span className="text-sm">Device Online</span>
@@ -108,6 +108,22 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                 </button>
               </div>
             </>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Auto Process Inbox</span>
+              <button
+                onClick={() => toggleAppOnline(nodeId)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  node.isAppOnline ? 'bg-green-600' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    node.isAppOnline ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           )}
         </div>
       </div>

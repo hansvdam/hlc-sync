@@ -96,7 +96,7 @@ const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?:
     nodeId,
     currentTime: now,
     isOnline: true,
-    isAppOnline: true,
+    isAppOnline: nodeId !== 'server', // Server defaults to manual processing
     tickets,
     inbox: [],
     outbox: [],
@@ -209,8 +209,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     const newState = get().nodes[nodeId].isAppOnline
     get().addLog(nodeId, 'App Status', newState ? 'Running' : 'Stopped')
 
-    // Auto-process inbox if app is started and we're not server
-    if (newState && nodeId !== 'server') {
+    // Auto-process inbox if app is started
+    if (newState) {
       get().processInbox(nodeId)
     }
   },
@@ -479,8 +479,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
     get().addLog(message.to, 'Message Received', `${message.type} from ${message.from}`, message)
 
-    // Auto-process if recipient is client and app is running
-    if (message.to !== 'server' && get().nodes[message.to].isAppOnline) {
+    // Auto-process if recipient is client and app is running, or if server is in auto-process mode
+    if (get().nodes[message.to].isAppOnline) {
       get().processInbox(message.to)
     }
   },
