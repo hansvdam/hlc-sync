@@ -30,6 +30,7 @@ interface SimulatorState {
   sendMessage: (message: SyncMessage) => void
   processInbox: (nodeId: NodeId) => void
   addLog: (nodeId: NodeId, action: string, details: string, data?: any) => void
+  clearLogs: () => void
   resetSimulator: () => void
   updateMessageProgress: (messageId: string, progress: number) => void
   deliverMessage: (messageId: string) => void
@@ -642,6 +643,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         }
       ]
     }))
+  },
+
+  clearLogs: () => {
+    set({ logs: [] })
   },
 
   resetSimulator: () => {

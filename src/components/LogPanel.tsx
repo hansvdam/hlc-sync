@@ -3,6 +3,7 @@ import { useSimulatorStore } from '../store/simulatorStore'
 
 export default function LogPanel() {
   const logs = useSimulatorStore(state => state.logs)
+  const clearLogs = useSimulatorStore(state => state.clearLogs)
   const logEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new logs arrive
@@ -12,7 +13,15 @@ export default function LogPanel() {
 
   return (
     <div className="h-full bg-gray-800 border-t border-gray-700 flex flex-col">
-      <div className="px-4 py-2 bg-gray-900 font-bold text-sm">Operation Log</div>
+      <div className="px-4 py-2 bg-gray-900 font-bold text-sm flex justify-between items-center">
+        <span>Operation Log</span>
+        <button 
+          onClick={clearLogs}
+          className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300 transition-colors"
+        >
+          Clear
+        </button>
+      </div>
       <div className="flex-1 overflow-auto px-4 py-2 font-mono text-xs space-y-1">
         {logs.map((log, index) => (
           <div key={index} className="flex gap-4 whitespace-nowrap">
