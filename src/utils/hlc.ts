@@ -40,21 +40,31 @@ export function createHLC(
 
 /**
  * Compare two HLC timestamps
- * @returns -1 if a < b, 0 if equal, 1 if a > b
+ * @returns Object containing result (-1 if a < b, 0 if equal, 1 if a > b) and reason
  */
-export function compareHLC(a: HLCTimestamp, b: HLCTimestamp): number {
+export function compareHLC(a: HLCTimestamp, b: HLCTimestamp): { result: number, reason: string } {
   // First compare timestamps
   if (a.timestamp !== b.timestamp) {
-    return a.timestamp < b.timestamp ? -1 : 1
+    return {
+      result: a.timestamp < b.timestamp ? -1 : 1,
+      reason: `Timestamp difference: ${a.timestamp} ${a.timestamp < b.timestamp ? '<' : '>'} ${b.timestamp}`
+    }
   }
 
   // Then compare counters
   if (a.counter !== b.counter) {
-    return a.counter < b.counter ? -1 : 1
+    return {
+      result: a.counter < b.counter ? -1 : 1,
+      reason: `Counter difference: ${a.counter} ${a.counter < b.counter ? '<' : '>'} ${b.counter}`
+    }
   }
 
   // Finally compare node IDs (tie-breaker)
-  return a.nodeId.localeCompare(b.nodeId)
+  const result = a.nodeId.localeCompare(b.nodeId)
+  return {
+    result: result === 0 ? 0 : (result < 0 ? -1 : 1),
+    reason: result === 0 ? 'Identical HLC' : `Node ID tie-breaker: ${a.nodeId} vs ${b.nodeId}`
+  }
 }
 
 /**
@@ -65,7 +75,7 @@ export function mergeHLCField<T>(
   remote: HLCField<T>
 ): HLCField<T> {
   const comparison = compareHLC(local.hlc, remote.hlc)
-  return comparison >= 0 ? local : remote
+  return comparison.result >= 0 ? local : remote
 }
 
 /**
@@ -99,7 +109,7 @@ export function getMaxHLCFromTickets(tickets: TicketDelta[]): HLCTimestamp | und
   tickets.forEach(ticket => {
     Object.values(ticket.fields).forEach(field => {
       if (field && field.hlc) {
-        if (!maxHLC || compareHLC(field.hlc, maxHLC) > 0) {
+        if (!maxHLC || compareHLC(field.hlc, maxHLC).result > 0) {
           maxHLC = field.hlc
         }
       }

@@ -10,10 +10,10 @@ export function mergeTickets(
   remote: TicketDelta[] | Ticket[]
 ): {
   merged: Ticket[]
-  conflicts: Array<{ ticketId: string, field: string, winner: string }>
+  conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }>
   updatedFields: Array<{ ticketId: string, field: string }>
 } {
-  const conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+  const conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
   const updatedFields: Array<{ ticketId: string, field: string }> = []
   const ticketMap = new Map<string, Ticket>()
 
@@ -53,7 +53,7 @@ export function mergeTickets(
           const remoteField = remoteTicket.fields[fieldName as keyof typeof remoteTicket.fields]
 
           if (localField && remoteField) {
-            const comparison = compareHLC(localField.hlc, remoteField.hlc)
+            const { result: comparison, reason } = compareHLC(localField.hlc, remoteField.hlc)
 
             if (comparison < 0) {
               // Remote wins
@@ -65,14 +65,16 @@ export function mergeTickets(
               conflicts.push({
                 ticketId: remoteTicket.id,
                 field: fieldName,
-                winner: remoteField.hlc.nodeId
+                winner: remoteField.hlc.nodeId,
+                reason
               })
             } else if (comparison > 0) {
               // Local wins (already in mergedFields)
               conflicts.push({
                 ticketId: remoteTicket.id,
                 field: fieldName,
-                winner: localField.hlc.nodeId
+                winner: localField.hlc.nodeId,
+                reason
               })
             }
             // If equal, no conflict (same value)
@@ -99,10 +101,10 @@ export function mergeFieldUpdate(
   update: FieldUpdateMessage
 ): {
   merged: Ticket[]
-  conflicts: Array<{ ticketId: string, field: string, winner: string }>
+  conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }>
   updatedFields: Array<{ ticketId: string, field: string }>
 } {
-  const conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+  const conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
   const updatedFields: Array<{ ticketId: string, field: string }> = []
   const localTicketMap = new Map<string, Ticket>()
 
@@ -125,7 +127,7 @@ export function mergeFieldUpdate(
     const localField = localTicket.fields[fieldName]
     
     if (localField) {
-      const comparison = compareHLC(localField.hlc, remoteField.hlc)
+      const { result: comparison, reason } = compareHLC(localField.hlc, remoteField.hlc)
 
       if (comparison < 0) {
         // Remote wins
@@ -146,14 +148,16 @@ export function mergeFieldUpdate(
         conflicts.push({
           ticketId: update.entity_id,
           field: update.field,
-          winner: update.hlc.nodeId
+          winner: update.hlc.nodeId,
+          reason
         })
       } else if (comparison > 0) {
         // Local wins - do nothing
         conflicts.push({
           ticketId: update.entity_id,
           field: update.field,
-          winner: localField.hlc.nodeId
+          winner: localField.hlc.nodeId,
+          reason
         })
       }
     }
@@ -186,7 +190,8 @@ export function mergeFieldUpdate(
     conflicts.push({
       ticketId: update.entity_id,
       field: update.field,
-      winner: update.hlc.nodeId // Remote "wins" because it's a new create
+      winner: update.hlc.nodeId, // Remote "wins" because it's a new create
+      reason: "New ticket created from update"
     })
   }
 

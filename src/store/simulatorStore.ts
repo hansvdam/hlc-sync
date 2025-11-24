@@ -489,7 +489,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     if (node.inbox.length === 0) return
 
     let currentTickets = node.tickets
-    let allConflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+    let allConflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
     let currentHLC = node.lastHLC
     let allUpdatedFields: Array<{ ticketId: string, field: string }> = []
     
@@ -515,7 +515,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       // We treat this as a "receive" event in HLC
       currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
 
-      let conflicts: Array<{ ticketId: string, field: string, winner: string }> = []
+      let conflicts: Array<{ ticketId: string, field: string, winner: string, reason: string }> = []
       let updatedFields: Array<{ ticketId: string, field: string }> = []
       let merged: Ticket[] = currentTickets
 
@@ -606,7 +606,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       get().addLog(
         nodeId,
         'Conflict Resolved',
-        `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner}`
+        `${conflict.ticketId}.${conflict.field} - Winner: ${conflict.winner} (${conflict.reason})`
       )
     })
 
