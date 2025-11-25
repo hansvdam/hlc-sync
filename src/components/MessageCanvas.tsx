@@ -148,10 +148,12 @@ export default function MessageCanvas() {
                   fontSize="10"
                   fill="white"
                 >
-                  {message.type === 'update' 
+                  {message.type === 'update'
                     ? '1 update'
                     : message.type === 'create'
                     ? '1 ticket'
+                    : message.type === 'rejection'
+                    ? 'rejected'
                     : `${message.tickets.length} ticket${message.tickets.length !== 1 ? 's' : ''}`
                   }
                 </text>

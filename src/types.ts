@@ -58,7 +58,44 @@ export interface TicketCreateMessage extends BaseMessage {
   ticket: Ticket
 }
 
-export type SyncMessage = BatchMessage | FieldUpdateMessage | TicketCreateMessage
+export interface RejectionMessage extends BaseMessage {
+  type: 'rejection'
+  originalMessageId: string
+  entity_id: string
+  field: string
+  value: string
+  existingValue: string // The current server value to revert to
+  reason: string
+  rule: string // The rule that triggered rejection
+}
+
+export type SyncMessage = BatchMessage | FieldUpdateMessage | TicketCreateMessage | RejectionMessage
+
+// Represents a single condition to evaluate
+export interface RejectionCondition {
+  // Left side: what to check
+  source: 'incoming' | 'existing'  // Check the incoming update value or existing field value
+  field: string                     // Field name (e.g., "dummy_field")
+
+  // Operator
+  operator: 'equals' | 'not_equals'
+
+  // Right side: what to compare against
+  // Use compareToField for cross-field comparison, OR value for literal comparison
+  compareToField?: {
+    source: 'incoming' | 'existing'
+    field: string
+  }
+  value?: string  // Literal value (used if compareToField not set)
+}
+
+// A rule contains one or more conditions (all must match - AND logic)
+export interface RejectionRule {
+  id: string
+  name: string                      // Human-readable name for display
+  conditions: RejectionCondition[]  // All conditions must match
+  enabled: boolean
+}
 
 // Node state
 export interface NodeState {
@@ -75,6 +112,7 @@ export interface NodeState {
   serverRevision?: number // Server only, tracks current revision
   lastSeenServerRevision?: number // Clients only, tracks last processed server revision
   eventBuffer?: SyncMessage[] // Server only, history of mutations
+  rejectionRules?: RejectionRule[] // Server only, business logic rules
   highlightedFields: Record<string, boolean> // Map of "ticketId:fieldName" -> boolean
 }
 

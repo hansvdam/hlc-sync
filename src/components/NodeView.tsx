@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import type { NodeId } from '../types'
+import type { NodeId, RejectionRule, RejectionCondition } from '../types'
 import { useSimulatorStore } from '../store/simulatorStore'
 import { formatHLC } from '../utils/hlc'
 import TicketTree from './TicketTree'
@@ -14,12 +14,15 @@ export default function NodeView({ nodeId }: NodeViewProps) {
   const [showEventBuffer, setShowEventBuffer] = useState(false)
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null)
   const [highlightRevision, setHighlightRevision] = useState(false)
-  
+  const [editingRules, setEditingRules] = useState(false)
+  const [rulesJson, setRulesJson] = useState('')
+
   const node = useSimulatorStore(state => state.nodes[nodeId])
   const updateNodeTime = useSimulatorStore(state => state.updateNodeTime)
   const toggleDeviceOnline = useSimulatorStore(state => state.toggleDeviceOnline)
   const toggleAppOnline = useSimulatorStore(state => state.toggleAppOnline)
   const createTicket = useSimulatorStore(state => state.createTicket)
+  const setRejectionRules = useSimulatorStore(state => state.setRejectionRules)
   const hasInFlightMessages = useSimulatorStore(state =>
     state.inFlightMessages.some(m => m.from === nodeId || m.to === nodeId)
   )
@@ -45,10 +48,18 @@ export default function NodeView({ nodeId }: NodeViewProps) {
   }
 
   const revisionClass = `text-xs px-2 py-1 rounded border transition-colors duration-300 ${
-    highlightRevision 
-      ? 'bg-green-600 text-white border-green-400' 
+    highlightRevision
+      ? 'bg-green-600 text-white border-green-400'
       : 'bg-indigo-900 text-indigo-200 border-indigo-700'
   }`
+
+  const formatCondition = (c: RejectionCondition) => {
+    const left = `${c.source}.${c.field}`
+    const right = c.compareToField
+      ? `${c.compareToField.source}.${c.compareToField.field}`
+      : `"${c.value}"`
+    return `${left} ${c.operator === 'equals' ? '==' : '!='} ${right}`
+  }
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 flex flex-col border border-gray-700 h-auto min-h-full">
@@ -205,6 +216,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                         msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
                         msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
                         msg.type === 'update' ? 'bg-orange-900 text-orange-200' :
+                        msg.type === 'rejection' ? 'bg-red-900 text-red-200' :
                         'bg-green-900 text-green-200'
                       }`}>
                         {msg.type}
@@ -250,6 +262,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                         msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
                         msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
                         msg.type === 'update' ? 'bg-orange-900 text-orange-200' :
+                        msg.type === 'rejection' ? 'bg-red-900 text-red-200' :
                         'bg-green-900 text-green-200'
                       }`}>
                         {msg.type}
@@ -291,6 +304,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
                         msg.type === 'push' ? 'bg-blue-900 text-blue-200' :
                         msg.type === 'pull' ? 'bg-purple-900 text-purple-200' :
                         msg.type === 'update' ? 'bg-orange-900 text-orange-200' :
+                        msg.type === 'rejection' ? 'bg-red-900 text-red-200' :
                         'bg-green-900 text-green-200'
                       }`}>
                         {msg.type}
@@ -339,6 +353,62 @@ export default function NodeView({ nodeId }: NodeViewProps) {
             >
               Process Inbox ({node.inbox.length})
             </button>
+          )}
+
+          {/* Rejection Rules (Server Only) */}
+          {nodeId === 'server' && (
+            <div className="mt-2 p-2 bg-gray-700 rounded">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-300">Rejection Rules</span>
+                <button
+                  onClick={() => {
+                    if (!editingRules) {
+                      setRulesJson(JSON.stringify(node.rejectionRules || [], null, 2))
+                    } else {
+                      try {
+                        const parsed = JSON.parse(rulesJson) as RejectionRule[]
+                        setRejectionRules(parsed)
+                      } catch (e) {
+                        alert('Invalid JSON')
+                        return
+                      }
+                    }
+                    setEditingRules(!editingRules)
+                  }}
+                  className="px-2 py-1 text-xs bg-indigo-600 hover:bg-indigo-700 rounded"
+                >
+                  {editingRules ? 'Save' : 'Edit'}
+                </button>
+              </div>
+
+              {editingRules ? (
+                <textarea
+                  value={rulesJson}
+                  onChange={(e) => setRulesJson(e.target.value)}
+                  className="w-full h-48 p-2 bg-gray-900 text-green-400 font-mono text-xs rounded border border-gray-600"
+                  placeholder='[{ "id": "rule-1", "name": "...", "conditions": [...], "enabled": true }]'
+                />
+              ) : (
+                <div className="text-xs space-y-1">
+                  {(node.rejectionRules || []).map((rule) => (
+                    <div
+                      key={rule.id}
+                      className={`p-1.5 rounded ${rule.enabled ? 'bg-red-900/50 border border-red-700' : 'bg-gray-800 border border-gray-600 opacity-50'}`}
+                    >
+                      <div className={`font-medium ${rule.enabled ? 'text-red-200' : 'text-gray-400'}`}>
+                        {rule.name}
+                      </div>
+                      <div className={`text-[10px] font-mono ${rule.enabled ? 'text-red-300' : 'text-gray-500'}`}>
+                        {rule.conditions.map(formatCondition).join(' && ')}
+                      </div>
+                    </div>
+                  ))}
+                  {(!node.rejectionRules || node.rejectionRules.length === 0) && (
+                    <div className="text-gray-500 italic">No rejection rules</div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 

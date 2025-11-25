@@ -1,8 +1,99 @@
 import { create } from 'zustand'
-import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, HLCTimestamp, FieldUpdateMessage, TicketCreateMessage } from '../types'
+import type { NodeState, Ticket, SyncMessage, LogEntry, NodeId, HLCTimestamp, FieldUpdateMessage, TicketCreateMessage, RejectionRule, RejectionCondition, RejectionMessage } from '../types'
 import { createHLCField, createHLC, getMaxHLCFromTickets, formatHLC } from '../utils/hlc'
 import { mergeTickets, mergeFieldUpdate, type ConflictInfo } from '../utils/merge'
 import { v4 as uuidv4 } from 'uuid'
+
+// Rejection evaluation types and helpers
+interface EvaluationContext {
+  incomingField: string   // The field being updated
+  incomingValue: string   // The new value
+  existingTicket: Ticket | undefined  // The current ticket state (if exists)
+}
+
+/**
+ * Get the value to check based on condition source
+ */
+function getConditionValue(
+  condition: RejectionCondition,
+  side: 'left' | 'right',
+  ctx: EvaluationContext
+): string | undefined {
+  if (side === 'left') {
+    // Left side is always source + field from condition
+    if (condition.source === 'incoming') {
+      // Only the field being updated is available as "incoming"
+      if (condition.field === ctx.incomingField) {
+        return ctx.incomingValue
+      }
+      return undefined // Can't check other incoming fields
+    } else {
+      // existing
+      if (!ctx.existingTicket) return undefined
+      const field = ctx.existingTicket.fields[condition.field as keyof Ticket['fields']]
+      return field?.value
+    }
+  } else {
+    // Right side: either literal value or compareToField
+    if (condition.value !== undefined) {
+      return condition.value
+    }
+    if (condition.compareToField) {
+      if (condition.compareToField.source === 'incoming') {
+        if (condition.compareToField.field === ctx.incomingField) {
+          return ctx.incomingValue
+        }
+        return undefined
+      } else {
+        if (!ctx.existingTicket) return undefined
+        const field = ctx.existingTicket.fields[condition.compareToField.field as keyof Ticket['fields']]
+        return field?.value
+      }
+    }
+    return undefined
+  }
+}
+
+/**
+ * Evaluate a single condition
+ */
+function evaluateCondition(condition: RejectionCondition, ctx: EvaluationContext): boolean {
+  const leftValue = getConditionValue(condition, 'left', ctx)
+  const rightValue = getConditionValue(condition, 'right', ctx)
+
+  // If we can't get values, condition doesn't match
+  if (leftValue === undefined || rightValue === undefined) return false
+
+  switch (condition.operator) {
+    case 'equals':
+      return leftValue === rightValue
+    case 'not_equals':
+      return leftValue !== rightValue
+    default:
+      return false
+  }
+}
+
+/**
+ * Evaluate if a field update should be rejected based on rejection rules
+ * Returns the matching rule if rejected, null if allowed
+ */
+function evaluateRejectionRules(
+  rules: RejectionRule[] | undefined,
+  ctx: EvaluationContext
+): RejectionRule | null {
+  if (!rules) return null
+
+  for (const rule of rules) {
+    if (!rule.enabled) continue
+    if (rule.conditions.length === 0) continue
+
+    // All conditions must match (AND logic)
+    const allMatch = rule.conditions.every(cond => evaluateCondition(cond, ctx))
+    if (allMatch) return rule
+  }
+  return null
+}
 
 type InFlightMessage = SyncMessage & {
   progress: number // 0 to 1 for animation
@@ -37,6 +128,7 @@ interface SimulatorState {
   clearModifiedTickets: (nodeId: NodeId) => void
   setFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
   clearFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
+  setRejectionRules: (rules: RejectionRule[]) => void
 }
 
 // Initial dummy tickets
@@ -105,6 +197,20 @@ const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?:
     lastHLC,
     serverRevision: nodeId === 'server' ? 0 : undefined,
     eventBuffer: nodeId === 'server' ? [] : undefined,
+    rejectionRules: nodeId === 'server' ? [
+      // Default rejection rule for demo: reject incoming.dummy_field === "rejected"
+      {
+        id: 'rule-1',
+        name: 'Block rejected value',
+        conditions: [{
+          source: 'incoming' as const,
+          field: 'dummy_field',
+          operator: 'equals' as const,
+          value: 'rejected'
+        }],
+        enabled: true
+      }
+    ] : undefined,
     lastSeenServerRevision: nodeId !== 'server' ? 0 : undefined,
     highlightedFields: {}
   }
@@ -497,20 +603,23 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     let newEventBuffer = node.eventBuffer || []
     let lastSeenServerRevision = node.lastSeenServerRevision || 0
 
-    // Process each message in inbox
-    node.inbox.forEach(message => {
+    // Process each message in inbox (using for...of to allow continue)
+    for (const message of node.inbox) {
       // Update HLC based on incoming message
       let maxRemoteHLC: HLCTimestamp | undefined
-      
+
       if (message.type === 'update') {
         maxRemoteHLC = message.hlc
       } else if (message.type === 'create') {
         maxRemoteHLC = getMaxHLCFromTickets([{ ...message.ticket, fields: message.ticket.fields }])
+      } else if (message.type === 'rejection') {
+        // Rejection messages don't update HLC - they're just notifications
+        maxRemoteHLC = undefined
       } else {
         // Batch message
         maxRemoteHLC = getMaxHLCFromTickets(message.tickets)
       }
-      
+
       // Update local HLC: max(local, remote, physical)
       // We treat this as a "receive" event in HLC
       currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
@@ -520,12 +629,72 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       let merged: Ticket[] = currentTickets
 
       if (message.type === 'update') {
-        // Single field update
+        // Server rejection check - BEFORE merge
+        if (nodeId === 'server') {
+          const serverNode = get().nodes['server']
+          const existingTicket = currentTickets.find(t => t.id === message.entity_id)
+
+          // Build evaluation context with incoming and existing data
+          const ctx: EvaluationContext = {
+            incomingField: message.field,
+            incomingValue: message.value,
+            existingTicket
+          }
+
+          const matchingRule = evaluateRejectionRules(serverNode.rejectionRules, ctx)
+
+          if (matchingRule) {
+            // REJECTION PATH
+            currentServerRevision++
+
+            // Format rule description for logging
+            const ruleDesc = matchingRule.conditions.map(c => {
+              const left = `${c.source}.${c.field}`
+              const right = c.compareToField
+                ? `${c.compareToField.source}.${c.compareToField.field}`
+                : `"${c.value}"`
+              return `${left} ${c.operator} ${right}`
+            }).join(' AND ')
+
+            // Get the existing value to send back for revert
+            const existingField = existingTicket?.fields[message.field as keyof Ticket['fields']]
+            const existingValue = existingField?.value ?? ''
+
+            const rejectionMessage: RejectionMessage = {
+              id: uuidv4(),
+              from: 'server',
+              to: message.from,
+              type: 'rejection',
+              timestamp: Date.now(),
+              revision: currentServerRevision,
+              originalMessageId: message.id,
+              entity_id: message.entity_id,
+              field: message.field,
+              value: message.value,
+              existingValue: existingValue,
+              reason: `Rejected by rule: ${matchingRule.name}`,
+              rule: ruleDesc
+            }
+
+            newEventBuffer = [...newEventBuffer, rejectionMessage]
+
+            get().addLog(
+              nodeId,
+              'Update Rejected',
+              `${message.entity_id}.${message.field} = "${message.value}" from ${message.from} - ${matchingRule.name}`
+            )
+
+            get().sendMessage(rejectionMessage)
+            continue // Skip merge and broadcast for rejected messages
+          }
+        }
+
+        // ACCEPTANCE PATH - Single field update
         const result = mergeFieldUpdate(currentTickets, message)
         merged = result.merged
         conflicts = result.conflicts
         updatedFields = result.updatedFields
-        
+
         get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`, message)
 
         // Log conflicts immediately
@@ -606,6 +775,41 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
             }
           })
         }
+      } else if (message.type === 'rejection') {
+        // Client receives rejection notification - revert to server's value
+        get().addLog(
+          nodeId,
+          'Update Rejected by Server',
+          `${message.entity_id}.${message.field} = "${message.value}" - ${message.reason} (reverting to "${message.existingValue}")`,
+          message
+        )
+
+        // Revert the field to the server's existing value
+        const ticketIndex = currentTickets.findIndex(t => t.id === message.entity_id)
+        if (ticketIndex !== -1) {
+          const ticket = currentTickets[ticketIndex]
+          const fieldKey = message.field as keyof Ticket['fields']
+          if (ticket.fields[fieldKey]) {
+            // Update the field value but keep the existing HLC (since we're reverting)
+            const updatedTicket = {
+              ...ticket,
+              fields: {
+                ...ticket.fields,
+                [fieldKey]: {
+                  ...ticket.fields[fieldKey],
+                  value: message.existingValue
+                }
+              }
+            }
+            currentTickets = [
+              ...currentTickets.slice(0, ticketIndex),
+              updatedTicket,
+              ...currentTickets.slice(ticketIndex + 1)
+            ]
+            merged = currentTickets
+            updatedFields = [{ ticketId: message.entity_id, field: message.field }]
+          }
+        }
       } else {
         // Batch update
         const result = mergeTickets(currentTickets, message.tickets as Ticket[])
@@ -613,7 +817,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         conflicts = result.conflicts
         updatedFields = result.updatedFields
         get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`, message)
-        
+
         // Log conflicts immediately
         conflicts.forEach(conflict => {
           const localInfo = conflict.localHLC ? formatHLC(conflict.localHLC) : 'none'
@@ -629,9 +833,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
       currentTickets = merged
       // Conflicts already logged, no need to accumulate for later logging
-      // allConflicts = [...allConflicts, ...conflicts] 
+      // allConflicts = [...allConflicts, ...conflicts]
       allUpdatedFields = [...allUpdatedFields, ...updatedFields]
-    })
+    }
 
     // Highlight updated fields
     if (allUpdatedFields.length > 0) {
@@ -733,7 +937,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       updates.forEach(({ ticketId, field }) => {
         delete newHighlights[`${ticketId}:${field}`]
       })
-      
+
       return {
         nodes: {
           ...state.nodes,
@@ -744,5 +948,18 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         }
       }
     })
+  },
+
+  setRejectionRules: (rules) => {
+    set(state => ({
+      nodes: {
+        ...state.nodes,
+        server: {
+          ...state.nodes.server,
+          rejectionRules: rules
+        }
+      }
+    }))
+    get().addLog('server', 'Rules Updated', `Set ${rules.filter(r => r.enabled).length} active rejection rules`)
   }
 }})
