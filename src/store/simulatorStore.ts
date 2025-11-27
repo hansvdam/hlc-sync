@@ -126,7 +126,7 @@ interface SimulatorState {
   updateMessageProgress: (messageId: string, progress: number) => void
   deliverMessage: (messageId: string) => void
   clearModifiedTickets: (nodeId: NodeId) => void
-  setFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
+  setFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string, isStale?: boolean }>) => void
   clearFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
   setRejectionRules: (rules: RejectionRule[]) => void
 }
@@ -414,7 +414,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     const node = get().nodes[nodeId]
     const ticket = node.tickets.find(t => t.id === ticketId)
     if (!ticket) return
-    
+
+    // Capture the field's current HLC before editing (for stale detection)
+    const currentField = ticket.fields[fieldName as keyof typeof ticket.fields]
+    const previousHlc = currentField?.hlc
+
     // Optimistically update highlighted fields for local edits
     get().setFieldHighlight(nodeId, [{ ticketId, field: fieldName }])
 
@@ -468,7 +472,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       field: fieldName,
       value: value,
       timestamp: Date.now(),
-      hlc: newField.hlc
+      hlc: newField.hlc,
+      previousHlc: previousHlc  // Include the field's HLC before editing for stale detection
     }
 
     if (nodeId === 'server') {
@@ -597,7 +602,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
     let currentTickets = node.tickets
     let currentHLC = node.lastHLC
-    let allUpdatedFields: Array<{ ticketId: string, field: string }> = []
+    let allUpdatedFields: Array<{ ticketId: string, field: string, isStale?: boolean }> = []
     
     let currentServerRevision = node.serverRevision || 0
     let newEventBuffer = node.eventBuffer || []
@@ -625,10 +630,12 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       currentHLC = createHLC(node.currentTime, nodeId, currentHLC, maxRemoteHLC)
 
       let conflicts: ConflictInfo[] = []
-      let updatedFields: Array<{ ticketId: string, field: string }> = []
+      let updatedFields: Array<{ ticketId: string, field: string, isStale?: boolean }> = []
       let merged: Ticket[] = currentTickets
 
       if (message.type === 'update') {
+        let isStale = false  // Track if this edit was based on stale data
+
         // Server rejection check - BEFORE merge
         if (nodeId === 'server') {
           const serverNode = get().nodes['server']
@@ -687,13 +694,40 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
             get().sendMessage(rejectionMessage)
             continue // Skip merge and broadcast for rejected messages
           }
+
+          // Stale detection (after rejection check passes)
+          const existingField = existingTicket?.fields[message.field as keyof Ticket['fields']]
+          const serverCurrentHlc = existingField?.hlc
+
+          if (message.previousHlc && serverCurrentHlc) {
+            // Any difference in HLC means stale (client didn't have latest)
+            isStale = (
+              message.previousHlc.timestamp !== serverCurrentHlc.timestamp ||
+              message.previousHlc.counter !== serverCurrentHlc.counter ||
+              message.previousHlc.nodeId !== serverCurrentHlc.nodeId
+            )
+
+            if (isStale) {
+              const previousInfo = formatHLC(message.previousHlc)
+              const currentInfo = formatHLC(serverCurrentHlc)
+
+              get().addLog(
+                nodeId,
+                'Stale Edit Detected',
+                `${message.entity_id}.${message.field} - Client had HLC=${previousInfo}, Server has HLC=${currentInfo}`
+              )
+            }
+          }
         }
 
         // ACCEPTANCE PATH - Single field update
         const result = mergeFieldUpdate(currentTickets, message)
         merged = result.merged
         conflicts = result.conflicts
-        updatedFields = result.updatedFields
+        // Tag updated fields with stale info for highlight system
+        // Server: use locally computed isStale, Client: use wasStale from broadcast
+        const staleFlag = nodeId === 'server' ? isStale : (message.wasStale ?? false)
+        updatedFields = result.updatedFields.map(f => ({ ...f, isStale: staleFlag }))
 
         get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`, message)
 
@@ -712,7 +746,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         // If server, broadcast to other clients
         if (nodeId === 'server') {
           currentServerRevision++
-          const messageWithRevision = { ...message, revision: currentServerRevision }
+          const messageWithRevision = {
+            ...message,
+            revision: currentServerRevision,
+            wasStale: isStale  // Include stale flag in broadcast
+          }
           newEventBuffer = [...newEventBuffer, messageWithRevision];
 
           ['client-a', 'client-b'].forEach(clientId => {
@@ -910,10 +948,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
   setFieldHighlight: (nodeId, updates) => {
     set(state => {
       const newHighlights = { ...state.nodes[nodeId].highlightedFields }
-      updates.forEach(({ ticketId, field }) => {
-        newHighlights[`${ticketId}:${field}`] = true
+      updates.forEach(({ ticketId, field, isStale }) => {
+        newHighlights[`${ticketId}:${field}`] = { isStale: isStale ?? false }
       })
-      
+
       return {
         nodes: {
           ...state.nodes,

@@ -51,6 +51,8 @@ export interface FieldUpdateMessage extends BaseMessage {
   field: string
   value: string
   hlc: HLCTimestamp
+  previousHlc?: HLCTimestamp  // HLC the field had when client started editing
+  wasStale?: boolean          // Set by server if edit was based on stale data
 }
 
 export interface TicketCreateMessage extends BaseMessage {
@@ -113,7 +115,7 @@ export interface NodeState {
   lastSeenServerRevision?: number // Clients only, tracks last processed server revision
   eventBuffer?: SyncMessage[] // Server only, history of mutations
   rejectionRules?: RejectionRule[] // Server only, business logic rules
-  highlightedFields: Record<string, boolean> // Map of "ticketId:fieldName" -> boolean
+  highlightedFields: Record<string, { isStale: boolean }> // Map of "ticketId:fieldName" -> highlight info
 }
 
 // Log entry
