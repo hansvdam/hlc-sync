@@ -11,6 +11,8 @@ function App() {
   const messageDelay = useSimulatorStore(state => state.messageDelay)
   const usePerTicketHLC = useSimulatorStore(state => state.usePerTicketHLC)
   const setUsePerTicketHLC = useSimulatorStore(state => state.setUsePerTicketHLC)
+  const realTimeTyping = useSimulatorStore(state => state.realTimeTyping)
+  const setRealTimeTyping = useSimulatorStore(state => state.setRealTimeTyping)
   const [logHeight, setLogHeight] = useState(192)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -64,6 +66,26 @@ function App() {
             </button>
             <span className="text-xs text-gray-400 w-20">
               {usePerTicketHLC ? 'Per-Ticket' : 'Per-Node'}
+            </span>
+          </div>
+
+          {/* Real-Time Typing Toggle */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">Typing:</span>
+            <button
+              onClick={() => setRealTimeTyping(!realTimeTyping)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                realTimeTyping ? 'bg-green-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  realTimeTyping ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className="text-xs text-gray-400 w-16">
+              {realTimeTyping ? 'Real-time' : 'Manual'}
             </span>
           </div>
 

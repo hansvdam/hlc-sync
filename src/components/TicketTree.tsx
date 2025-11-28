@@ -12,6 +12,8 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
   const ticketHLCs = useSimulatorStore(state => state.nodes[nodeId].ticketHLCs)
   const highlightedFields = useSimulatorStore(state => state.nodes[nodeId].highlightedFields)
   const editTicketField = useSimulatorStore(state => state.editTicketField)
+  const realTimeTyping = useSimulatorStore(state => state.realTimeTyping)
+  const resetCounter = useSimulatorStore(state => state.resetCounter)
   const [expandedTickets, setExpandedTickets] = useState<Set<string>>(new Set())
   const [editingField, setEditingField] = useState<{ticketId: string, field: string} | null>(null)
   // Track pending edits: map of "ticketId:fieldName" -> pending value
@@ -30,13 +32,18 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
     })
   }
 
-  // Track value changes without sending
+  // Track value changes, send immediately if real-time typing is enabled
   const handleValueChange = (ticketId: string, fieldName: string, value: string) => {
     const key = `${ticketId}:${fieldName}`
     setPendingEdits(prev => ({
       ...prev,
       [key]: value
     }))
+
+    // In real-time mode, send immediately on each keystroke
+    if (realTimeTyping) {
+      editTicketField(nodeId, ticketId, fieldName, value)
+    }
   }
 
   // Send the edit when clicking the send button
@@ -84,6 +91,13 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
       inputRef.current.select()
     }
   }, [editingField])
+
+  // Clear local state on simulator reset
+  useEffect(() => {
+    setExpandedTickets(new Set())
+    setEditingField(null)
+    setPendingEdits({})
+  }, [resetCounter])
 
   // Check if a field has unsent changes
   const hasPendingEdit = (ticketId: string, fieldName: string, currentValue: string): boolean => {
@@ -148,26 +162,32 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
                             onChange={(e) => handleValueChange(ticket.id, fieldName, e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
-                                handleSendEdit(ticket.id, fieldName)
+                                if (!realTimeTyping) {
+                                  handleSendEdit(ticket.id, fieldName)
+                                } else {
+                                  setEditingField(null)
+                                }
                               } else if (e.key === 'Escape') {
                                 handleCancelEdit(ticket.id, fieldName)
                               }
                             }}
                             className="flex-1 bg-gray-600 px-2 py-1 rounded"
                           />
+                          {!realTimeTyping && (
+                            <button
+                              onClick={() => handleSendEdit(ticket.id, fieldName)}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-medium"
+                              title="Send update"
+                            >
+                              Send
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleSendEdit(ticket.id, fieldName)}
-                            className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-medium"
-                            title="Send update"
-                          >
-                            Send
-                          </button>
-                          <button
-                            onClick={() => handleCancelEdit(ticket.id, fieldName)}
+                            onClick={() => realTimeTyping ? setEditingField(null) : handleCancelEdit(ticket.id, fieldName)}
                             className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"
-                            title="Cancel (Esc)"
+                            title={realTimeTyping ? "Done (Esc)" : "Cancel (Esc)"}
                           >
-                            ✕
+                            {realTimeTyping ? '✓' : '✕'}
                           </button>
                         </>
                       ) : (
@@ -180,7 +200,7 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
                           >
                             {pendingValue ?? field.value}
                           </div>
-                          {hasPending && (
+                          {hasPending && !realTimeTyping && (
                             <button
                               onClick={() => handleSendEdit(ticket.id, fieldName)}
                               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-medium animate-pulse"

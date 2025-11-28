@@ -115,6 +115,12 @@ interface SimulatorState {
   // Global toggle for HLC mode
   usePerTicketHLC: boolean
 
+  // Global toggle for real-time typing (send on each keystroke)
+  realTimeTyping: boolean
+
+  // Reset counter (increments on each reset to trigger UI state clearing)
+  resetCounter: number
+
   // Actions
   updateNodeTime: (nodeId: NodeId, time: number) => void
   toggleDeviceOnline: (nodeId: NodeId) => void
@@ -133,6 +139,7 @@ interface SimulatorState {
   clearFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
   setRejectionRules: (rules: RejectionRule[]) => void
   setUsePerTicketHLC: (enabled: boolean) => void
+  setRealTimeTyping: (enabled: boolean) => void
 }
 
 // Initial dummy tickets
@@ -244,6 +251,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
   messageDelay: 500, // 0.5 second default
   logs: [],
   usePerTicketHLC: false, // Default to per-node HLC mode
+  realTimeTyping: false, // Default to manual send mode
+  resetCounter: 0,
 
   updateNodeTime: (nodeId, time) => {
     set(state => ({
@@ -978,15 +987,16 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
   resetSimulator: () => {
     const now = Date.now()
-    set({
+    set(state => ({
       nodes: {
         'client-a': createInitialNodeState('client-a', now + 1, now),
         'client-b': createInitialNodeState('client-b', now + 1, now),
         'server': createInitialNodeState('server', now, now)
       },
       inFlightMessages: [],
-      logs: []
-    })
+      logs: [],
+      resetCounter: state.resetCounter + 1
+    }))
     get().addLog('server', 'System', 'Simulator reset')
   },
 
@@ -1063,5 +1073,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     set({ usePerTicketHLC: enabled })
     get().addLog('server', 'HLC Mode Changed',
       enabled ? 'Using per-ticket HLC' : 'Using per-node HLC')
+  },
+
+  setRealTimeTyping: (enabled) => {
+    set({ realTimeTyping: enabled })
+    get().addLog('server', 'Typing Mode Changed',
+      enabled ? 'Real-time typing enabled' : 'Manual send mode')
   }
 }})
