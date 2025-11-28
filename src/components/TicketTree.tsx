@@ -158,14 +158,14 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
                           <input
                             ref={inputRef}
                             type="text"
-                            value={pendingValue ?? field.value}
+                            value={realTimeTyping ? field.value : (pendingValue ?? field.value)}
                             onChange={(e) => handleValueChange(ticket.id, fieldName, e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 if (!realTimeTyping) {
                                   handleSendEdit(ticket.id, fieldName)
                                 } else {
-                                  setEditingField(null)
+                                  handleCancelEdit(ticket.id, fieldName) // Clear pending and exit
                                 }
                               } else if (e.key === 'Escape') {
                                 handleCancelEdit(ticket.id, fieldName)
@@ -183,7 +183,7 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
                             </button>
                           )}
                           <button
-                            onClick={() => realTimeTyping ? setEditingField(null) : handleCancelEdit(ticket.id, fieldName)}
+                            onClick={() => handleCancelEdit(ticket.id, fieldName)}
                             className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"
                             title={realTimeTyping ? "Done (Esc)" : "Cancel (Esc)"}
                           >
@@ -194,11 +194,11 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
                         <>
                           <div
                             className={`flex-1 px-2 py-1 rounded cursor-text hover:bg-gray-500 ${
-                              hasPending ? 'bg-yellow-900/50 ring-1 ring-yellow-500' : 'bg-gray-600'
+                              hasPending && !realTimeTyping ? 'bg-yellow-900/50 ring-1 ring-yellow-500' : 'bg-gray-600'
                             }`}
-                            onClick={() => startEditing(ticket.id, fieldName, pendingValue ?? field.value)}
+                            onClick={() => startEditing(ticket.id, fieldName, field.value)}
                           >
-                            {pendingValue ?? field.value}
+                            {realTimeTyping ? field.value : (pendingValue ?? field.value)}
                           </div>
                           {hasPending && !realTimeTyping && (
                             <button
