@@ -14,7 +14,7 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
   const editTicketField = useSimulatorStore(state => state.editTicketField)
   const realTimeTyping = useSimulatorStore(state => state.realTimeTyping)
   const resetCounter = useSimulatorStore(state => state.resetCounter)
-  const [expandedTickets, setExpandedTickets] = useState<Set<string>>(new Set())
+  const [expandedTickets, setExpandedTickets] = useState<Set<string>>(new Set(['ticket-1']))
   const [editingField, setEditingField] = useState<{ticketId: string, field: string} | null>(null)
   // Track pending edits: map of "ticketId:fieldName" -> pending value
   const [pendingEdits, setPendingEdits] = useState<Record<string, string>>({})
@@ -94,7 +94,7 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
 
   // Clear local state on simulator reset
   useEffect(() => {
-    setExpandedTickets(new Set())
+    setExpandedTickets(new Set(['ticket-1']))
     setEditingField(null)
     setPendingEdits({})
   }, [resetCounter])
