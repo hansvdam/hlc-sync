@@ -9,6 +9,7 @@ interface TicketTreeProps {
 
 export default function TicketTree({ nodeId }: TicketTreeProps) {
   const tickets = useSimulatorStore(state => state.nodes[nodeId].tickets)
+  const ticketHLCs = useSimulatorStore(state => state.nodes[nodeId].ticketHLCs)
   const highlightedFields = useSimulatorStore(state => state.nodes[nodeId].highlightedFields)
   const editTicketField = useSimulatorStore(state => state.editTicketField)
   const [expandedTickets, setExpandedTickets] = useState<Set<string>>(new Set())
@@ -108,7 +109,14 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
 
           {/* Ticket fields (expanded) */}
           {expandedTickets.has(ticket.id) && (
-            <div className="px-4 pb-2 space-y-2">
+            <div className="pb-2">
+              {/* Ticket HLC display */}
+              {ticketHLCs[ticket.id] && (
+                <div className="px-4 py-1 text-xs text-purple-300 font-mono border-b border-gray-600 bg-purple-900/20">
+                  Ticket HLC: {formatHLC(ticketHLCs[ticket.id])}
+                </div>
+              )}
+              <div className="px-4 pt-2 space-y-2">
               {Object.entries(ticket.fields).map(([fieldName, field]) => {
                 const highlightInfo = highlightedFields[`${ticket.id}:${fieldName}`]
                 const isHighlighted = !!highlightInfo
@@ -190,6 +198,7 @@ export default function TicketTree({ nodeId }: TicketTreeProps) {
                   </div>
                 )
               })}
+              </div>
             </div>
           )}
         </div>

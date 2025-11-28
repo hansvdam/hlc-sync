@@ -9,6 +9,8 @@ import HelpOverlay from './components/HelpOverlay'
 function App() {
   const resetSimulator = useSimulatorStore(state => state.resetSimulator)
   const messageDelay = useSimulatorStore(state => state.messageDelay)
+  const usePerTicketHLC = useSimulatorStore(state => state.usePerTicketHLC)
+  const setUsePerTicketHLC = useSimulatorStore(state => state.setUsePerTicketHLC)
   const [logHeight, setLogHeight] = useState(192)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -45,6 +47,26 @@ function App() {
         <h1 className="text-xl font-bold">HLC Synchronization Simulator</h1>
 
         <div className="flex items-center gap-4">
+          {/* HLC Mode Toggle */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">HLC Mode:</span>
+            <button
+              onClick={() => setUsePerTicketHLC(!usePerTicketHLC)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                usePerTicketHLC ? 'bg-purple-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  usePerTicketHLC ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className="text-xs text-gray-400 w-20">
+              {usePerTicketHLC ? 'Per-Ticket' : 'Per-Node'}
+            </span>
+          </div>
+
           {/* Message delay control */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-400">Message Delay:</label>

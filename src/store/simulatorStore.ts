@@ -112,6 +112,9 @@ interface SimulatorState {
   // Operation log
   logs: LogEntry[]
 
+  // Global toggle for HLC mode
+  usePerTicketHLC: boolean
+
   // Actions
   updateNodeTime: (nodeId: NodeId, time: number) => void
   toggleDeviceOnline: (nodeId: NodeId) => void
@@ -129,19 +132,24 @@ interface SimulatorState {
   setFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string, isStale?: boolean }>) => void
   clearFieldHighlight: (nodeId: NodeId, updates: Array<{ ticketId: string, field: string }>) => void
   setRejectionRules: (rules: RejectionRule[]) => void
+  setUsePerTicketHLC: (enabled: boolean) => void
 }
 
 // Initial dummy tickets
-const createInitialTickets = (nodeId: NodeId, baseTime: number): { tickets: Ticket[], lastHLC: HLCTimestamp } => {
+const createInitialTickets = (nodeId: NodeId, baseTime: number): {
+  tickets: Ticket[],
+  lastHLC: HLCTimestamp,
+  ticketHLCs: Record<string, HLCTimestamp>
+} => {
   const baseHLC: HLCTimestamp = { timestamp: baseTime, counter: 0, nodeId }
-  
+
   // Initial tickets are created by server at baseTime - 10
   const initialTicketHLC: HLCTimestamp = {
     timestamp: baseTime - 10,
     counter: 0,
     nodeId: 'server'
   }
-  
+
   const createField = (val: string) => {
      // Use the fixed initialTicketHLC for all initial fields
      return {
@@ -173,17 +181,23 @@ const createInitialTickets = (nodeId: NodeId, baseTime: number): { tickets: Tick
       }
     }
   ]
-  
-  return { tickets, lastHLC: baseHLC }
+
+  // Initialize per-ticket HLCs (same as field HLCs for initial tickets)
+  const ticketHLCs: Record<string, HLCTimestamp> = {}
+  tickets.forEach(ticket => {
+    ticketHLCs[ticket.id] = initialTicketHLC
+  })
+
+  return { tickets, lastHLC: baseHLC, ticketHLCs }
 }
 
 const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?: number): NodeState => {
   const now = initialTime ?? Date.now()
-  // Use dataTime if provided, otherwise use now. 
+  // Use dataTime if provided, otherwise use now.
   // For synchronized start, dataTime should be the same across nodes.
   const ticketTime = dataTime ?? now
-  const { tickets, lastHLC } = createInitialTickets(nodeId, ticketTime)
-  
+  const { tickets, lastHLC, ticketHLCs } = createInitialTickets(nodeId, ticketTime)
+
   return {
     nodeId,
     currentTime: now,
@@ -195,6 +209,7 @@ const createInitialNodeState = (nodeId: NodeId, initialTime?: number, dataTime?:
     modifiedTicketIds: [],
     modifiedFields: {},
     lastHLC,
+    ticketHLCs,
     serverRevision: nodeId === 'server' ? 0 : undefined,
     eventBuffer: nodeId === 'server' ? [] : undefined,
     rejectionRules: nodeId === 'server' ? [
@@ -228,6 +243,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
   inFlightMessages: [],
   messageDelay: 500, // 0.5 second default
   logs: [],
+  usePerTicketHLC: false, // Default to per-node HLC mode
 
   updateNodeTime: (nodeId, time) => {
     set(state => ({
@@ -354,7 +370,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
             ...state.nodes[nodeId].modifiedFields,
             [newTicketId]: Object.keys(newTicket.fields)
           },
-          lastHLC: currentHLC
+          lastHLC: currentHLC,
+          ticketHLCs: {
+            ...state.nodes[nodeId].ticketHLCs,
+            [newTicketId]: currentHLC  // Initialize ticket HLC
+          }
         }
       }
     }))
@@ -422,8 +442,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     // Optimistically update highlighted fields for local edits
     get().setFieldHighlight(nodeId, [{ ticketId, field: fieldName }])
 
-    // Use node.lastHLC instead of ticket field's HLC
-    const lastHLC = node.lastHLC
+    // Choose HLC basis based on global toggle
+    const usePerTicketHLC = get().usePerTicketHLC
+    const lastHLC = usePerTicketHLC
+      ? (node.ticketHLCs[ticketId] || node.lastHLC)  // Ticket HLC with fallback
+      : node.lastHLC  // Node HLC (existing behavior)
 
     // Create new field value with HLC
     const newField = createHLCField(value, node.currentTime, nodeId, lastHLC)
@@ -451,11 +474,15 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
             : [...state.nodes[nodeId].modifiedTicketIds, ticketId],
           modifiedFields: {
             ...state.nodes[nodeId].modifiedFields,
-            [ticketId]: currentModifiedFields.includes(fieldName) 
-              ? currentModifiedFields 
+            [ticketId]: currentModifiedFields.includes(fieldName)
+              ? currentModifiedFields
               : [...currentModifiedFields, fieldName]
           },
-          lastHLC: newField.hlc
+          lastHLC: newField.hlc,
+          ticketHLCs: {
+            ...state.nodes[nodeId].ticketHLCs,
+            [ticketId]: newField.hlc  // Always update ticket HLC
+          }
         }
       }
     }))
@@ -602,8 +629,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
     let currentTickets = node.tickets
     let currentHLC = node.lastHLC
+    let currentTicketHLCs = { ...node.ticketHLCs }  // Track per-ticket HLCs
     let allUpdatedFields: Array<{ ticketId: string, field: string, isStale?: boolean }> = []
-    
+
     let currentServerRevision = node.serverRevision || 0
     let newEventBuffer = node.eventBuffer || []
     let lastSeenServerRevision = node.lastSeenServerRevision || 0
@@ -729,6 +757,13 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         const staleFlag = nodeId === 'server' ? isStale : (message.wasStale ?? false)
         updatedFields = result.updatedFields.map(f => ({ ...f, isStale: staleFlag }))
 
+        // Update ticket HLC for this update message
+        const ticketId = message.entity_id
+        currentTicketHLCs = {
+          ...currentTicketHLCs,
+          [ticketId]: createHLC(node.currentTime, nodeId, currentTicketHLCs[ticketId], message.hlc)
+        }
+
         get().addLog(nodeId, 'Message Processed', `Update ${message.entity_id}.${message.field} = "${message.value}" from ${message.from}`, message)
 
         // Log conflicts immediately
@@ -772,6 +807,16 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         merged = result.merged
         conflicts = result.conflicts
         updatedFields = result.updatedFields
+
+        // Initialize ticket HLC from max field HLC in the new ticket
+        const newTicketMaxHLC = getMaxHLCFromTickets([message.ticket])
+        if (newTicketMaxHLC) {
+          currentTicketHLCs = {
+            ...currentTicketHLCs,
+            [message.ticket.id]: createHLC(node.currentTime, nodeId, currentTicketHLCs[message.ticket.id], newTicketMaxHLC)
+          }
+        }
+
         get().addLog(nodeId, 'Message Processed', `Created ticket ${message.ticket.id} from ${message.from}`, message)
 
         // Log conflicts immediately
@@ -854,6 +899,18 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         merged = result.merged
         conflicts = result.conflicts
         updatedFields = result.updatedFields
+
+        // Update ticket HLCs for all tickets in batch
+        message.tickets.forEach(ticket => {
+          const maxHLC = getMaxHLCFromTickets([ticket])
+          if (maxHLC) {
+            currentTicketHLCs = {
+              ...currentTicketHLCs,
+              [ticket.id]: createHLC(node.currentTime, nodeId, currentTicketHLCs[ticket.id], maxHLC)
+            }
+          }
+        })
+
         get().addLog(nodeId, 'Message Processed', `Merged ${message.tickets.length} tickets from ${message.from}`, message)
 
         // Log conflicts immediately
@@ -889,6 +946,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           tickets: currentTickets,
           inbox: [], // Clear inbox
           lastHLC: currentHLC,
+          ticketHLCs: currentTicketHLCs,  // Persist updated ticket HLCs
           serverRevision: nodeId === 'server' ? currentServerRevision : undefined,
           eventBuffer: nodeId === 'server' ? newEventBuffer : undefined,
           lastSeenServerRevision: nodeId !== 'server' ? lastSeenServerRevision : undefined
@@ -999,5 +1057,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       }
     }))
     get().addLog('server', 'Rules Updated', `Set ${rules.filter(r => r.enabled).length} active rejection rules`)
+  },
+
+  setUsePerTicketHLC: (enabled) => {
+    set({ usePerTicketHLC: enabled })
+    get().addLog('server', 'HLC Mode Changed',
+      enabled ? 'Using per-ticket HLC' : 'Using per-node HLC')
   }
 }})

@@ -144,9 +144,16 @@ export default function NodeView({ nodeId }: NodeViewProps) {
       <div className="mb-4 flex gap-2 flex-shrink-0 flex-wrap">
         {/* Revision Display */}
         {nodeId === 'server' ? (
-          <span className={revisionClass}>
-            Rev: {node.serverRevision}
-          </span>
+          <>
+            <span className={revisionClass}>
+              Rev: {node.serverRevision}
+            </span>
+            {node.lastHLC && (
+              <span className="text-xs px-2 py-1 rounded border bg-gray-700 text-gray-300 border-gray-600 font-mono">
+                Node HLC: {formatHLC(node.lastHLC)}
+              </span>
+            )}
+          </>
         ) : (
           <>
             <span className={revisionClass}>
@@ -154,7 +161,7 @@ export default function NodeView({ nodeId }: NodeViewProps) {
             </span>
             {node.lastHLC && (
               <span className="text-xs px-2 py-1 rounded border bg-gray-700 text-gray-300 border-gray-600 font-mono">
-                HLC: {formatHLC(node.lastHLC)}
+                Node HLC: {formatHLC(node.lastHLC)}
               </span>
             )}
           </>
